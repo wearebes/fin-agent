@@ -1,0 +1,1 @@
+"""yfinance adapter configuration."""

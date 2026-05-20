@@ -1,0 +1,20 @@
+﻿.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.coverage
+htmlcov/
+.venv/
+dist/
+build/
+*.egg-info/
+var/
+
+# Local diagnostic artifacts
+/*_out.txt
+/*_check.txt
+/python_exec.txt

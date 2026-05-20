@@ -1,0 +1,24 @@
+app:
+  name: fin-agent
+  environment: local
+logging:
+  level: INFO
+  json: false
+database:
+  url: sqlite:///./var/fin_agent.db
+  echo: false
+runtime:
+  request_timeout_seconds: 30
+  data_dir: ./var
+  validate_runtime_secrets: true
+providers:
+  default_selection:
+    llm: openai
+    market_data: yfinance
+    search: exa
+workflows:
+  default_selection:
+    research: research
+feature_flags:
+  enable_api_docs: true
+  enable_trace_storage: true

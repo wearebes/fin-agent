@@ -1,0 +1,1 @@
+"""Exa search adapter configuration."""

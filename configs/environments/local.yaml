@@ -1,0 +1,6 @@
+app:
+  environment: local
+logging:
+  level: DEBUG
+database:
+  url: sqlite:///./var/fin_agent-local.db

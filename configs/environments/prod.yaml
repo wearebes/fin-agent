@@ -1,0 +1,9 @@
+app:
+  environment: prod
+logging:
+  level: INFO
+  json: true
+database:
+  url: postgresql+psycopg://fin_agent:change-me@localhost:5432/fin_agent
+feature_flags:
+  enable_api_docs: false

@@ -1,0 +1,8 @@
+app:
+  environment: test
+logging:
+  level: WARNING
+database:
+  url: sqlite:///./var/fin_agent-test.db
+feature_flags:
+  enable_api_docs: false
