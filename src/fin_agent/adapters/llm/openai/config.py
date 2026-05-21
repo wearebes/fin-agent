@@ -2,7 +2,10 @@ from pydantic import BaseModel, Field, SecretStr
 
 
 class OpenAIConfig(BaseModel):
-    model: str = Field(default="gpt-4.1-mini", description="OpenAI model used for research workflows.")
+    model: str = Field(
+        default="gpt-4.1-mini",
+        description="OpenAI model used for research workflows.",
+    )
     api_key: SecretStr | None = Field(
         default=None,
         description="OpenAI API key for the active LLM provider.",
