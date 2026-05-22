@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from fin_agent.adapters.market_data.router import MarketDataRouter
 from fin_agent.domain.constants import AssetType, DataFrequency, FinancialStatementType
 from fin_agent.domain.types import (
     AnalystResponse,
@@ -12,6 +13,8 @@ from fin_agent.domain.types import (
     FinancialStatementResponse,
     MarketDataResponse,
 )
+
+__all__ = ["MarketDataProvider", "MarketDataRouter"]
 
 
 class MarketDataProvider(Protocol):

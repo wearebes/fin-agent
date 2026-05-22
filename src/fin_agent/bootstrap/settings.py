@@ -15,6 +15,7 @@ from pydantic_core import PydanticUndefined
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from fin_agent.adapters.llm.openai.config import OpenAIConfig
+from fin_agent.adapters.market_data.akshare.config import AKShareConfig
 from fin_agent.adapters.market_data.yfinance.config import YFinanceConfig
 from fin_agent.adapters.search.exa.config import ExaSearchConfig
 from fin_agent.domain.constants import (
@@ -178,6 +179,7 @@ class AppSettings(BaseSettings):
     feature_flags: FeatureFlagsConfig = Field(default_factory=FeatureFlagsConfig)
     openai: OpenAIConfig = Field(default_factory=OpenAIConfig)
     market_data: YFinanceConfig = Field(default_factory=YFinanceConfig)
+    akshare: AKShareConfig = Field(default_factory=AKShareConfig)
     search: ExaSearchConfig = Field(default_factory=ExaSearchConfig)
     research_workflow: ResearchWorkflowConfig = Field(default_factory=ResearchWorkflowConfig)
 
