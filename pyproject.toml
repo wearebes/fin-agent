@@ -23,6 +23,7 @@ dependencies = [
   "uvicorn>=0.30,<1",
   "yfinance>=0.2.40,<1",
   "akshare>=1.14,<2",
+  "exa-py>=1.0,<2",
 ]
 
 [project.optional-dependencies]
@@ -49,7 +50,14 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["typer.Option"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
 mypy_path = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["yfinance.*", "akshare.*", "pandas.*", "exa_py.*"]
+ignore_missing_imports = true
