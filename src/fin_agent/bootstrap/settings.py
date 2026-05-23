@@ -48,8 +48,14 @@ class LoggingConfig(BaseModel):
 
 
 class DatabaseConfig(BaseModel):
-    url: str = Field(default="sqlite:///./var/fin_agent.db", description="Database connection string.")
-    echo: bool = Field(default=False, description="Echo SQL statements to logs.")
+    url: str = Field(
+        default="sqlite:///./var/fin_agent.db",
+        description="Database connection string.",
+    )
+    echo: bool = Field(
+        default=False,
+        description="Echo SQL statements to logs.",
+    )
 
 
 class RuntimeConfig(BaseModel):
@@ -66,7 +72,10 @@ class RuntimeConfig(BaseModel):
 
 
 class ProviderSelectionConfig(BaseModel):
-    llm: LLMProviderName = Field(default=LLMProviderName.OPENAI, description="Default LLM provider name.")
+    llm: LLMProviderName = Field(
+        default=LLMProviderName.OPENAI,
+        description="Default LLM provider name.",
+    )
     market_data: MarketDataProviderName = Field(
         default=MarketDataProviderName.YFINANCE,
         description="Default market data provider name.",
@@ -154,7 +163,9 @@ class LayeredYamlSettingsSource(PydanticBaseSettingsSource):
         return None, field_name, False
 
     def __call__(self) -> dict[str, Any]:
-        environment = _resolve_environment_from_init(getattr(self._init_settings, 'init_kwargs', {}))
+        environment = _resolve_environment_from_init(
+            getattr(self._init_settings, 'init_kwargs', {})
+        )
         base_path, env_path = _config_files_for(environment)
         return _deep_merge(_read_yaml(base_path), _read_yaml(env_path))
 
@@ -286,8 +297,9 @@ def collect_runtime_validation_errors(settings: AppSettings) -> list[str]:
     """Check scaffold runtime prerequisites that must be present at startup."""
     errors: list[str] = []
     if settings.runtime.validate_runtime_secrets:
-        if settings.providers.default_selection.llm == LLMProviderName.OPENAI and not _secret_is_set(
-            settings.openai.api_key
+        if (
+            settings.providers.default_selection.llm == LLMProviderName.OPENAI
+            and not _secret_is_set(settings.openai.api_key)
         ):
             errors.append('FIN_AGENT__OPENAI__API_KEY is required for the default OpenAI provider.')
         if (
@@ -295,7 +307,10 @@ def collect_runtime_validation_errors(settings: AppSettings) -> list[str]:
             and settings.search.enabled
             and not _secret_is_set(settings.search.api_key)
         ):
-            errors.append('FIN_AGENT__SEARCH__API_KEY is required for the default Exa search provider.')
+            errors.append(
+                'FIN_AGENT__SEARCH__API_KEY is required '
+                'for the default Exa search provider.'
+            )
     if not settings.database.url.strip():
         errors.append('database.url must not be empty.')
     return errors

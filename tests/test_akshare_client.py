@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -9,7 +9,6 @@ import pytest
 from fin_agent.adapters.market_data.akshare import AKShareClient, AKShareConfig
 from fin_agent.domain.constants import (
     AssetType,
-    DataFrequency,
     FinancialStatementType,
 )
 from fin_agent.domain.types import (

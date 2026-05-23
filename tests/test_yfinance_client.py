@@ -14,12 +14,12 @@ from fin_agent.domain.constants import (
 )
 from fin_agent.domain.types import (
     AnalystRecommendation,
+    AnalystResponse,
     CompanyInfo,
     CryptoDataResponse,
     EarningsEstimate,
     FinancialStatementResponse,
     MarketDataResponse,
-    AnalystResponse,
 )
 
 
@@ -92,7 +92,7 @@ def _make_earnings_df() -> pd.DataFrame:
 
 
 def _mock_ticker(
-    history_df: pd.DataFrame | None = _make_history_df(),
+    history_df: pd.DataFrame | None = None,
     info: dict | None = None,
     income_stmt: pd.DataFrame | None = None,
     balance_sheet: pd.DataFrame | None = None,
@@ -102,6 +102,8 @@ def _mock_ticker(
     *,
     use_default_info: bool = True,
 ) -> MagicMock:
+    if history_df is None:
+        history_df = _make_history_df()
     t = MagicMock()
     t.history.return_value = history_df
     _default_info = {

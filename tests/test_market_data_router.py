@@ -3,16 +3,17 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from fin_agent.adapters.market_data.router import MarketDataRouter
-from fin_agent.domain.constants import AssetType, DataFrequency, FinancialStatementType
+from fin_agent.domain.constants import (
+    AssetType,
+    DataFrequency,
+    FinancialStatementType,
+)
 from fin_agent.domain.types import (
     AnalystRecommendation,
     AnalystResponse,
     CompanyInfo,
     CryptoDataResponse,
-    EarningsEstimate,
     FinancialStatementRecord,
     FinancialStatementResponse,
     MarketDataPoint,
@@ -46,7 +47,11 @@ def _empty_market_resp(ticker: str) -> MarketDataResponse:
     )
 
 
-def _financial_resp(ticker: str, revenue: float | None, net_income: float | None) -> FinancialStatementResponse:
+def _financial_resp(
+    ticker: str,
+    revenue: float | None,
+    net_income: float | None,
+) -> FinancialStatementResponse:
     return FinancialStatementResponse(
         ticker=ticker,
         statement_type=FinancialStatementType.INCOME_STATEMENT,

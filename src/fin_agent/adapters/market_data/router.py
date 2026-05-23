@@ -19,7 +19,7 @@ from fin_agent.domain.types import (
 logger = logging.getLogger(__name__)
 
 
-def _first_non_none(*values: object) -> object:
+def _first_non_none[T](*values: T | None) -> T | None:
     for v in values:
         if v is not None:
             return v
@@ -28,7 +28,7 @@ def _first_non_none(*values: object) -> object:
 
 def _merge_company_info(a: CompanyInfo, b: CompanyInfo) -> CompanyInfo:
     return CompanyInfo(
-        ticker=_first_non_none(a.ticker, b.ticker),
+        ticker=a.ticker or b.ticker,
         name=_first_non_none(a.name, b.name),
         sector=_first_non_none(a.sector, b.sector),
         industry=_first_non_none(a.industry, b.industry),
