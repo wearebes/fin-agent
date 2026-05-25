@@ -8,7 +8,7 @@ from fin_agent.domain.types import LLMMessage, LLMResponse
 
 
 class LLMProvider(Protocol):
-    def chat(
+    async def chat(
         self,
         messages: list[LLMMessage],
         *,

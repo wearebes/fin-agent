@@ -1,4 +1,4 @@
-﻿"""Centralized configuration loading for the fin-agent scaffold."""
+"""Centralized configuration loading for the fin-agent scaffold."""
 
 from __future__ import annotations
 
