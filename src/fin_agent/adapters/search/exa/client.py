@@ -19,7 +19,11 @@ class ExaSearchClient:
             if self._config.api_key is not None
             else None
         )
-        self._exa = Exa(api_key=api_key)
+        if api_key:
+            self._exa = Exa(api_key=api_key)
+        else:
+            self._exa = None
+            logger.warning("ExaSearchClient: no API key configured, search will return empty results")
 
     def search(
         self,
@@ -27,6 +31,8 @@ class ExaSearchClient:
         *,
         max_results: int | None = None,
     ) -> SearchResponse:
+        if self._exa is None:
+            return SearchResponse(query=query)
         num_results = max_results or self._config.max_results
         include_text = self._config.include_text
         try:
