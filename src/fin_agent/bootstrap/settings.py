@@ -294,7 +294,6 @@ def _secret_is_set(secret: SecretStr | None) -> bool:
 
 
 def collect_runtime_validation_errors(settings: AppSettings) -> list[str]:
-    """Check scaffold runtime prerequisites that must be present at startup."""
     errors: list[str] = []
     if settings.runtime.validate_runtime_secrets:
         if (
@@ -302,15 +301,6 @@ def collect_runtime_validation_errors(settings: AppSettings) -> list[str]:
             and not _secret_is_set(settings.openai.api_key)
         ):
             errors.append('FIN_AGENT__OPENAI__API_KEY is required for the default OpenAI provider.')
-        if (
-            settings.providers.default_selection.search == SearchProviderName.EXA
-            and settings.search.enabled
-            and not _secret_is_set(settings.search.api_key)
-        ):
-            errors.append(
-                'FIN_AGENT__SEARCH__API_KEY is required '
-                'for the default Exa search provider.'
-            )
     if not settings.database.url.strip():
         errors.append('database.url must not be empty.')
     return errors

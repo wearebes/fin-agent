@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 class ResearchWorkflowConfig(BaseModel):
     max_tool_calls: int = Field(
-        default=6,
+        default=3,
         ge=1,
         description="Maximum number of tool calls allowed in one research run.",
     )

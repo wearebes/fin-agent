@@ -39,7 +39,7 @@ class TestSearchWithText:
         )
         mock_exa.search_and_contents.return_value = _make_search_response([r1, r2])
 
-        client = ExaSearchClient()
+        client = ExaSearchClient(ExaSearchConfig(api_key="test-key"))
         resp = client.search("AAPL earnings")
 
         assert isinstance(resp, SearchResponse)
@@ -58,7 +58,7 @@ class TestSearchWithText:
         r = _make_exa_result(title=None, text="body")
         mock_exa.search_and_contents.return_value = _make_search_response([r])
 
-        client = ExaSearchClient()
+        client = ExaSearchClient(ExaSearchConfig(api_key="test-key"))
         resp = client.search("test query")
 
         assert resp.results[0].title == "https://example.com/article"
@@ -101,7 +101,7 @@ class TestSearchErrorHandling:
         mock_exa = mock_exa_cls.return_value
         mock_exa.search_and_contents.side_effect = Exception("network error")
 
-        client = ExaSearchClient()
+        client = ExaSearchClient(ExaSearchConfig(api_key="test-key"))
         resp = client.search("test query")
 
         assert isinstance(resp, SearchResponse)
@@ -115,7 +115,7 @@ class TestMaxResultsOverride:
         mock_exa = mock_exa_cls.return_value
         mock_exa.search_and_contents.return_value = _make_search_response([])
 
-        client = ExaSearchClient()
+        client = ExaSearchClient(ExaSearchConfig(api_key="test-key"))
         client.search("test query", max_results=3)
 
         mock_exa.search_and_contents.assert_called_once_with(
@@ -157,3 +157,10 @@ class TestConfigIntegration:
         ExaSearchClient(config=config)
 
         mock_exa_cls.assert_called_once_with(api_key="my-secret-key")
+
+    def test_no_api_key_returns_empty_results(self):
+        config = ExaSearchConfig()
+        client = ExaSearchClient(config=config)
+        resp = client.search("test query")
+        assert isinstance(resp, SearchResponse)
+        assert len(resp.results) == 0

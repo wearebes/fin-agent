@@ -1,7 +1,8 @@
-﻿"""CLI entrypoints for the fin-agent scaffold runtime."""
+"""CLI entrypoints for the fin-agent scaffold runtime."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -63,8 +64,10 @@ def research_run(
     except RuntimeSettingsError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
-    result = container.research_service.run(
-        ResearchRequest(question=question, ticker=ticker, template=template)
+    result = asyncio.run(
+        container.research_service.run(
+            ResearchRequest(question=question, ticker=ticker, template=template)
+        )
     )
     typer.echo(result.model_dump_json(indent=2))
 

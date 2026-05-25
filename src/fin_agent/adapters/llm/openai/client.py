@@ -55,6 +55,10 @@ class OpenAIClient:
 
             response = await self._client.chat.completions.create(**create_kwargs)
 
+            if not response.choices:
+                logger.warning("LLM returned empty choices for model=%s", self._config.model)
+                return empty
+
             choice = response.choices[0]
             content = choice.message.content or ""
             role = choice.message.role or "assistant"

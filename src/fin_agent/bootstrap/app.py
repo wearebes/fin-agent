@@ -1,7 +1,8 @@
-﻿"""FastAPI application factory for the fin-agent scaffold."""
+"""FastAPI application factory for the fin-agent scaffold."""
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -16,7 +17,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     resolved_settings = settings or load_settings()
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI):
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = resolved_settings
         app.state.container = build_container(resolved_settings)
         yield
