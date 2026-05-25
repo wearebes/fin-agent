@@ -16,6 +16,11 @@ providers:
     llm: openai
     market_data: yfinance
     search: exa
+akshare:
+  adjust: qfq
+  history_period: 1y
+  request_timeout_seconds: 15
+  enabled: true
 workflows:
   default_selection:
     research: research

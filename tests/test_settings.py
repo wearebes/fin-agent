@@ -62,4 +62,7 @@ def test_api_and_cli_read_the_same_settings(monkeypatch) -> None:
     assert result.exit_code == 0
     doctor_report = json.loads(result.stdout)
     assert doctor_report["environment"] == app_settings.app.environment.value
-    assert doctor_report["providers"] == app_settings.providers.default_selection.model_dump(mode="json")
+    assert (
+        doctor_report["providers"]
+        == app_settings.providers.default_selection.model_dump(mode="json")
+    )

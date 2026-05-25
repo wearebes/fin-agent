@@ -13,6 +13,7 @@ class LLMProviderName(StrEnum):
 
 class MarketDataProviderName(StrEnum):
     YFINANCE = "yfinance"
+    AKSHARE = "akshare"
 
 
 class SearchProviderName(StrEnum):
