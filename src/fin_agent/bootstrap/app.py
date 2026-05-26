@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from fin_agent.bootstrap.container import Container, build_container
 from fin_agent.bootstrap.settings import AppSettings, load_settings
@@ -34,6 +37,15 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         redoc_url='/redoc' if resolved_settings.feature_flags.enable_api_docs else None,
     )
     app.include_router(build_router())
+
+    static_dir = Path(__file__).resolve().parent.parent.parent.parent / "static"
+    if static_dir.is_dir():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+        @app.get("/", include_in_schema=False)
+        async def index() -> FileResponse:
+            return FileResponse(static_dir / "index.html")
+
     return app
 
 
