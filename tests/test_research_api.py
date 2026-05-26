@@ -138,7 +138,10 @@ def test_research_cli_runs(monkeypatch) -> None:
             cli_app,
             ['research', 'run', '--question', 'Test question'],
         )
-        assert result.exit_code == 0
         payload = json.loads(result.stdout)
         assert payload['run_id']
         assert payload['status'] in ('completed', 'failed')
+        if payload['status'] == 'failed':
+            assert result.exit_code == 1
+        else:
+            assert result.exit_code == 0
