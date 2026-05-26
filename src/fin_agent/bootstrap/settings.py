@@ -48,6 +48,10 @@ class LoggingConfig(BaseModel):
 
 
 class DatabaseConfig(BaseModel):
+    backend: str = Field(
+        default="memory",
+        description="Storage backend: 'memory' for InMemoryRunStore, 'sql' for SQLAlchemyRunStore.",
+    )
     url: str = Field(
         default="sqlite:///./var/fin_agent.db",
         description="Database connection string.",

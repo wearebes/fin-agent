@@ -44,7 +44,7 @@ def test_config_modules_import_without_bootstrap() -> None:
     assert OpenAIConfig().model == "gpt-4.1-mini"
     assert YFinanceConfig().history_period == "1y"
     assert ExaSearchConfig().max_results == 8
-    assert ResearchWorkflowConfig().max_tool_calls == 6
+    assert ResearchWorkflowConfig().max_tool_calls == 3
 
 
 def test_api_and_cli_read_the_same_settings(monkeypatch) -> None:

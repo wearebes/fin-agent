@@ -46,6 +46,7 @@ class RunResult(BaseModel):
     request: ResearchRequest
     providers: dict[str, str]
     planned_stages: list[str]
+    report: str = Field(default="", description="Synthesized research report text.")
     evidence: list[EvidenceItem]
     trace: list[TraceRecord]
 

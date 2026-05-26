@@ -19,8 +19,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = resolved_settings
-        app.state.container = build_container(resolved_settings)
+        container = build_container(resolved_settings)
+        app.state.container = container
         yield
+        run_store = container.run_store
+        if hasattr(run_store, "engine"):
+            run_store.engine.dispose()
         app.state.container = None
 
     app = FastAPI(

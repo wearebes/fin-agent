@@ -19,6 +19,7 @@ from fin_agent.bootstrap.settings import (
     load_settings,
     render_settings_schema,
 )
+from fin_agent.domain.constants import RunStatus
 from fin_agent.domain.types import ResearchRequest
 
 app = typer.Typer(no_args_is_help=True, help='fin-agent command line interface.')
@@ -70,6 +71,8 @@ def research_run(
         )
     )
     typer.echo(result.model_dump_json(indent=2))
+    if result.status == RunStatus.FAILED:
+        raise typer.Exit(code=1)
 
 
 @app.command()
