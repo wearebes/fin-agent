@@ -4,6 +4,8 @@ import logging
 
 from fin_agent.adapters.market_data.akshare.client import AKShareClient
 from fin_agent.adapters.market_data.akshare.config import AKShareConfig
+from fin_agent.adapters.market_data.fmp.client import FMPClient
+from fin_agent.adapters.market_data.fmp.config import FMPConfig
 from fin_agent.adapters.market_data.yfinance.client import YFinanceClient
 from fin_agent.adapters.market_data.yfinance.config import YFinanceConfig
 from fin_agent.domain.constants import AssetType, DataFrequency, FinancialStatementType
@@ -121,9 +123,11 @@ class MarketDataRouter:
         self,
         yfinance_config: YFinanceConfig | None = None,
         akshare_config: AKShareConfig | None = None,
+        fmp_config: FMPConfig | None = None,
     ) -> None:
         self._yf = YFinanceClient(yfinance_config)
         self._ak = AKShareClient(akshare_config)
+        self._fmp = FMPClient(fmp_config)
 
     def get_market_data(
         self,
@@ -133,16 +137,23 @@ class MarketDataRouter:
         frequency: DataFrequency = DataFrequency.DAILY,
         period: str | None = None,
     ) -> MarketDataResponse:
-        primary, secondary = self._pick(ticker, asset_type)
-        resp: MarketDataResponse = primary.get_market_data(
-            ticker, asset_type, frequency=frequency, period=period
+        is_a_share = bool(ticker and ticker[0].isdigit()) and asset_type in (
+            AssetType.STOCK, AssetType.ETF, AssetType.INDEX,
         )
+        if is_a_share:
+            resp = self._ak.get_market_data(ticker, asset_type, frequency=frequency, period=period)
+            if resp.data:
+                return resp
+        if self._fmp._api_key:
+            resp = self._fmp.get_market_data(ticker, asset_type, frequency=frequency, period=period)
+            if resp.data:
+                return resp
+        resp = self._yf.get_market_data(ticker, asset_type, frequency=frequency, period=period)
         if resp.data:
             return resp
-        fallback: MarketDataResponse = secondary.get_market_data(
-            ticker, asset_type, frequency=frequency, period=period
-        )
-        return fallback
+        if not is_a_share:
+            return self._ak.get_market_data(ticker, asset_type, frequency=frequency, period=period)
+        return MarketDataResponse(ticker=ticker, asset_type=asset_type, frequency=frequency)
 
     def get_financials(
         self,
@@ -154,6 +165,9 @@ class MarketDataRouter:
         resp_a = self._yf.get_financials(ticker, statement_type, frequency=frequency)
         resp_b = self._ak.get_financials(ticker, statement_type, frequency=frequency)
         merged_data = _merge_records_by_year(resp_a.data, resp_b.data)
+        if self._fmp._api_key:
+            resp_c = self._fmp.get_financials(ticker, statement_type, frequency=frequency)
+            merged_data = _merge_records_by_year(merged_data, resp_c.records)
         return FinancialStatementResponse(
             ticker=ticker,
             statement_type=statement_type,
@@ -163,12 +177,23 @@ class MarketDataRouter:
     def get_analyst_data(self, ticker: str) -> AnalystResponse:
         resp_a = self._yf.get_analyst_data(ticker)
         resp_b = self._ak.get_analyst_data(ticker)
-        return _merge_analyst_response(resp_a, resp_b)
+        merged = _merge_analyst_response(resp_a, resp_b)
+        if self._fmp._api_key:
+            fmp_recs = self._fmp.get_analyst_data(ticker)
+            if fmp_recs:
+                extra = AnalystResponse(ticker=ticker, recommendations=fmp_recs)
+                merged = _merge_analyst_response(merged, extra)
+        return merged
 
     def get_company_info(self, ticker: str) -> CompanyInfo:
         info_a = self._yf.get_company_info(ticker)
         info_b = self._ak.get_company_info(ticker)
-        return _merge_company_info(info_a, info_b)
+        merged = _merge_company_info(info_a, info_b)
+        if self._fmp._api_key:
+            info_c = self._fmp.get_company_info(ticker)
+            if info_c:
+                merged = _merge_company_info(merged, info_c)
+        return merged
 
     def get_crypto_data(
         self,
@@ -184,16 +209,4 @@ class MarketDataRouter:
         )
         return fallback
 
-    def _pick(
-        self, ticker: str, asset_type: AssetType
-    ) -> tuple[YFinanceClient | AKShareClient, YFinanceClient | AKShareClient]:
-        is_a_share = bool(ticker and ticker[0].isdigit()) and asset_type in (
-            AssetType.STOCK,
-            AssetType.ETF,
-            AssetType.INDEX,
-        )
-        if is_a_share:
-            return self._ak, self._yf
-        if asset_type == AssetType.CRYPTO:
-            return self._yf, self._ak
-        return self._yf, self._ak
+

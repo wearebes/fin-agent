@@ -14,10 +14,12 @@ class LLMProviderName(StrEnum):
 class MarketDataProviderName(StrEnum):
     YFINANCE = "yfinance"
     AKSHARE = "akshare"
+    FMP = "fmp"
 
 
 class SearchProviderName(StrEnum):
     EXA = "exa"
+    TAVILY = "tavily"
 
 
 class WorkflowName(StrEnum):

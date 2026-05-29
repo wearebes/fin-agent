@@ -15,7 +15,7 @@ providers:
   default_selection:
     llm: openai
     market_data: yfinance
-    search: exa
+    search: tavily
 akshare:
   adjust: qfq
   history_period: 1y

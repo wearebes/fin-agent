@@ -27,6 +27,9 @@ class ResearchRequest(BaseModel):
     template: str = Field(
         default="open_research", description="Prompt and output template name."
     )
+    lang: str = Field(
+        default="zh", description="Output language: 'zh' for native Chinese, 'en' for English."
+    )
 
 
 class EvidenceItem(BaseModel):

@@ -9,10 +9,12 @@ from pathlib import Path
 from fin_agent.adapters.llm.openai.client import OpenAIClient
 from fin_agent.adapters.market_data.router import MarketDataRouter
 from fin_agent.adapters.search.exa.client import ExaSearchClient
+from fin_agent.adapters.search.tavily.client import TavilySearchClient
 from fin_agent.bootstrap.settings import AppSettings, collect_runtime_validation_errors
 from fin_agent.services.research import ResearchService
 from fin_agent.storage.db_store import SQLAlchemyRunStore
 from fin_agent.storage.run_store import InMemoryRunStore, RunStore
+from fin_agent.domain.constants import SearchProviderName
 from fin_agent.workflows.research.stages import StageDeps
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,15 @@ def _build_run_store(settings: AppSettings) -> RunStore:
     return InMemoryRunStore()
 
 
+def _build_search_provider(settings: AppSettings):
+    provider = settings.providers.default_selection.search
+    if provider == SearchProviderName.TAVILY:
+        logger.info("Using TavilySearchClient")
+        return TavilySearchClient(settings.tavily)
+    logger.info("Using ExaSearchClient")
+    return ExaSearchClient(settings.search)
+
+
 def build_container(settings: AppSettings) -> Container:
     errors = collect_runtime_validation_errors(settings)
     if errors:
@@ -52,10 +63,11 @@ def build_container(settings: AppSettings) -> Container:
     run_store = _build_run_store(settings)
 
     llm = OpenAIClient(settings.openai)
-    search = ExaSearchClient(settings.search)
+    search = _build_search_provider(settings)
     market_data = MarketDataRouter(
         yfinance_config=settings.market_data,
         akshare_config=settings.akshare,
+        fmp_config=settings.fmp,
     )
 
     deps = StageDeps(

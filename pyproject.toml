@@ -24,6 +24,7 @@ dependencies = [
   "yfinance>=0.2.40,<1",
   "akshare>=1.14,<2",
   "exa-py>=1.0,<2",
+  "tavily-python>=0.5,<1",
   "openai>=1.30,<2",
 ]
 
@@ -62,5 +63,5 @@ strict = true
 mypy_path = ["src"]
 
 [[tool.mypy.overrides]]
-module = ["yfinance.*", "akshare.*", "pandas.*", "exa_py.*", "openai.*"]
+module = ["yfinance.*", "akshare.*", "pandas.*", "exa_py.*", "tavily.*", "openai.*"]
 ignore_missing_imports = true

@@ -7,6 +7,7 @@ from typing import Any
 
 from fin_agent.domain.types import EvidenceItem, LLMMessage, TraceRecord
 from fin_agent.workflows.research.context import ResearchContext, ToolCallRecord
+from fin_agent.workflows.research.lang import get_lang_instruction
 from fin_agent.workflows.research.stages import StageDeps, ToolRegistry
 from fin_agent.workflows.research.stages.tools import build_default_tool_registry
 
@@ -74,7 +75,8 @@ def _build_tool_registry(deps: StageDeps) -> ToolRegistry:
 async def tool_exec(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
     registry = _build_tool_registry(deps)
     tool_names = ", ".join(registry.available_tools())
-    system_prompt = TOOL_EXEC_SYSTEM_PROMPT.format(tool_names=tool_names)
+    lang_instruction = get_lang_instruction(ctx.request.lang)
+    system_prompt = TOOL_EXEC_SYSTEM_PROMPT.format(tool_names=tool_names) + "\n" + lang_instruction
 
     evidence_text = "\n".join(
         f"[{e.source}] {e.summary}" for e in ctx.evidence
@@ -91,7 +93,7 @@ async def tool_exec(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
             LLMMessage(role="user", content=user_content),
         ]
         try:
-            resp = await deps.llm.chat(messages, temperature=0.1, max_tokens=512)
+            resp = await deps.llm.chat(messages, temperature=0.1, max_tokens=4096)
         except Exception:
             logger.exception("tool-exec: LLM call failed")
             break
@@ -158,8 +160,10 @@ async def synthesize(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
     evidence_text = "\n\n".join(
         f"Source: {e.source}\n{e.summary}" for e in ctx.evidence
     )
+    lang_instruction = get_lang_instruction(ctx.request.lang)
+    system_content = SYNTHESIZE_SYSTEM_PROMPT + "\n" + lang_instruction
     messages = [
-        LLMMessage(role="system", content=SYNTHESIZE_SYSTEM_PROMPT),
+        LLMMessage(role="system", content=system_content),
         LLMMessage(
             role="user",
             content=(
@@ -169,7 +173,7 @@ async def synthesize(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
         ),
     ]
     try:
-        resp = await deps.llm.chat(messages, temperature=0.3, max_tokens=4096)
+        resp = await deps.llm.chat(messages, temperature=0.3, max_tokens=16384)
         report = resp.message.content
     except Exception:
         logger.exception("synthesize: LLM call failed")
@@ -186,15 +190,17 @@ async def synthesize(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
 
 
 async def review(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
+    lang_instruction = get_lang_instruction(ctx.request.lang)
+    system_content = REVIEW_SYSTEM_PROMPT + "\n" + lang_instruction
     messages = [
-        LLMMessage(role="system", content=REVIEW_SYSTEM_PROMPT),
+        LLMMessage(role="system", content=system_content),
         LLMMessage(
             role="user",
             content=f"Research question: {ctx.request.question}\n\nReport:\n{ctx.report}",
         ),
     ]
     try:
-        resp = await deps.llm.chat(messages, temperature=0.1, max_tokens=512)
+        resp = await deps.llm.chat(messages, temperature=0.1, max_tokens=4096)
         review_text = resp.message.content.strip()
         review_data = json.loads(review_text)
         passed = bool(review_data.get("passed", False))

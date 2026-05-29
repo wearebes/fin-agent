@@ -3,13 +3,12 @@ from __future__ import annotations
 import json
 import logging
 import re
-import ssl
-import urllib.request
 from datetime import date, timedelta
 from typing import Any
 
 import akshare as ak
 import pandas as pd
+import requests as _requests
 
 from fin_agent.adapters.market_data.akshare.config import AKShareConfig
 from fin_agent.domain.constants import AssetType, DataFrequency, FinancialStatementType
@@ -27,20 +26,37 @@ from fin_agent.domain.types import (
 
 logger = logging.getLogger(__name__)
 
-_SSL_CTX = ssl.create_default_context()
-_SSL_CTX.check_hostname = False
-_SSL_CTX.verify_mode = ssl.CERT_NONE
-
 _DC_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
     "Referer": "https://data.eastmoney.com/",
+    "Accept": "*/*",
+    "Connection": "keep-alive",
 }
+
+_DC_SESSION: _requests.Session | None = None
+
+
+def _get_dc_session() -> _requests.Session:
+    global _DC_SESSION
+    if _DC_SESSION is None:
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        _DC_SESSION = _requests.Session()
+        _DC_SESSION.headers.update(_DC_HEADERS)
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+        retry = Retry(total=3, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504])
+        adapter = HTTPAdapter(max_retries=retry)
+        _DC_SESSION.mount("https://", adapter)
+        _DC_SESSION.mount("http://", adapter)
+    return _DC_SESSION
 
 
 def _dc_fetch(url: str, timeout: int = 15) -> dict[str, Any]:
-    req = urllib.request.Request(url, headers=_DC_HEADERS)
-    r = urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX)
-    return json.loads(r.read().decode())
+    s = _get_dc_session()
+    r = s.get(url, timeout=timeout, verify=False)
+    r.raise_for_status()
+    return r.json()
 
 _PERIOD_DAYS: dict[str, int] = {
     "1mo": 30,

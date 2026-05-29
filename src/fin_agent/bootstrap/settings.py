@@ -16,8 +16,10 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 
 from fin_agent.adapters.llm.openai.config import OpenAIConfig
 from fin_agent.adapters.market_data.akshare.config import AKShareConfig
+from fin_agent.adapters.market_data.fmp.config import FMPConfig
 from fin_agent.adapters.market_data.yfinance.config import YFinanceConfig
 from fin_agent.adapters.search.exa.config import ExaSearchConfig
+from fin_agent.adapters.search.tavily.config import TavilySearchConfig
 from fin_agent.domain.constants import (
     EnvironmentName,
     LLMProviderName,
@@ -88,6 +90,11 @@ class ProviderSelectionConfig(BaseModel):
         default=SearchProviderName.EXA,
         description="Default search provider name.",
     )
+
+
+class ProxyConfig(BaseModel):
+    http: str | None = Field(default=None, description="HTTP proxy URL, e.g. http://127.0.0.1:7890")
+    https: str | None = Field(default=None, description="HTTPS proxy URL, e.g. http://127.0.0.1:7890")
 
 
 class ProvidersConfig(BaseModel):
@@ -195,7 +202,9 @@ class AppSettings(BaseSettings):
     openai: OpenAIConfig = Field(default_factory=OpenAIConfig)
     market_data: YFinanceConfig = Field(default_factory=YFinanceConfig)
     akshare: AKShareConfig = Field(default_factory=AKShareConfig)
+    fmp: FMPConfig = Field(default_factory=FMPConfig)
     search: ExaSearchConfig = Field(default_factory=ExaSearchConfig)
+    tavily: TavilySearchConfig = Field(default_factory=TavilySearchConfig)
     research_workflow: ResearchWorkflowConfig = Field(default_factory=ResearchWorkflowConfig)
 
     _source_files: tuple[Path, Path] = PrivateAttr(default_factory=tuple)

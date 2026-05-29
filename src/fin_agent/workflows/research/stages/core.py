@@ -12,6 +12,7 @@ from fin_agent.workflows.research.context import (
     RetrievalPlan,
     SearchPlanItem,
 )
+from fin_agent.workflows.research.lang import get_lang_instruction
 from fin_agent.workflows.research.stages import StageDeps
 
 logger = logging.getLogger(__name__)
@@ -55,13 +56,16 @@ async def plan(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
     if ctx.request.ticker:
         user_content += f"\nTicker: {ctx.request.ticker}"
 
+    lang_instruction = get_lang_instruction(ctx.request.lang)
+    system_content = PLAN_SYSTEM_PROMPT + "\n" + lang_instruction
+
     messages = [
-        LLMMessage(role="system", content=PLAN_SYSTEM_PROMPT),
+        LLMMessage(role="system", content=system_content),
         LLMMessage(role="user", content=user_content),
     ]
 
     try:
-        resp = await deps.llm.chat(messages, temperature=0.2, max_tokens=1024)
+        resp = await deps.llm.chat(messages, temperature=0.2, max_tokens=4096)
         plan_text = resp.message.content.strip()
         plan_data = json.loads(plan_text)
         retrieval_plan = RetrievalPlan(
