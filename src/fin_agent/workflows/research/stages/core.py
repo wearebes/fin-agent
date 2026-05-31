@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from uuid import uuid4
 
 from fin_agent.domain.types import EvidenceItem, LLMMessage, TraceRecord
@@ -67,6 +68,9 @@ async def plan(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
     try:
         resp = await deps.llm.chat(messages, temperature=0.2, max_tokens=4096)
         plan_text = resp.message.content.strip()
+        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", plan_text, re.DOTALL)
+        if match:
+            plan_text = match.group(1)
         plan_data = json.loads(plan_text)
         retrieval_plan = RetrievalPlan(
             search_queries=[

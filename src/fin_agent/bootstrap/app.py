@@ -38,8 +38,18 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     )
     app.include_router(build_router())
 
-    static_dir = Path(__file__).resolve().parent.parent.parent.parent / "static"
-    if static_dir.is_dir():
+    project_root = Path(__file__).resolve().parent.parent.parent.parent
+    dist_dir = project_root / "frontend" / "dist"
+    static_dir = project_root / "static"
+
+    if dist_dir.is_dir():
+        # Serve the built React SPA. Mounted at "/" AFTER the API router so
+        # /v1, /healthz, /docs and /openapi.json keep priority. html=True
+        # returns index.html for "/", which is all HashRouter needs. The SPA
+        # references /assets/* — StaticFiles serves those from dist as well.
+        app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="spa")
+    elif static_dir.is_dir():
+        # Fallback: legacy single-file frontend.
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
         @app.get("/", include_in_schema=False)

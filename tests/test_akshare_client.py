@@ -70,19 +70,6 @@ def _make_cashflow_df() -> pd.DataFrame:
     )
 
 
-def _make_forecast_df() -> pd.DataFrame:
-    return pd.DataFrame(
-        {
-            "机构名称": ["中信证券", "国泰君安"],
-            "评级": ["买入", "增持"],
-            "目标价格": [2200.0, 2100.0],
-            "日期": ["2025-01-10", "2025-01-12"],
-            "预测年份": ["2025", "2025"],
-            "预测EPS": [50.5, 48.3],
-        }
-    )
-
-
 def _make_info_df() -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -208,34 +195,14 @@ class TestGetFinancials:
 
 
 class TestGetAnalystData:
-    @patch("fin_agent.adapters.market_data.akshare.client.ak.stock_rank_forecast_cninfo")
-    def test_parses_recommendations_and_earnings(self, mock_forecast):
-        mock_forecast.return_value = _make_forecast_df()
+    def test_analyst_data_disabled_returns_empty(self):
         client = AKShareClient()
         resp = client.get_analyst_data("600519")
 
         assert isinstance(resp, AnalystResponse)
         assert resp.ticker == "600519"
-        assert len(resp.recommendations) == 2
-        assert len(resp.earnings_estimates) == 2
-
-        rec = resp.recommendations[0]
-        assert rec.firm == "中信证券"
-        assert rec.rating == "买入"
-        assert rec.target_price == 2200.0
-        assert rec.rating_date == date(2025, 1, 10)
-
-        est = resp.earnings_estimates[0]
-        assert est.eps_estimate == 50.5
-
-    @patch("fin_agent.adapters.market_data.akshare.client.ak.stock_rank_forecast_cninfo")
-    def test_empty_data_returns_empty_lists(self, mock_forecast):
-        mock_forecast.return_value = pd.DataFrame()
-        client = AKShareClient()
-        resp = client.get_analyst_data("600519")
-
-        assert len(resp.recommendations) == 0
-        assert len(resp.earnings_estimates) == 0
+        assert resp.recommendations == []
+        assert resp.earnings_estimates == []
 
 
 class TestGetCompanyInfo:

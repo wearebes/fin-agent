@@ -12,7 +12,6 @@ from fin_agent.domain.types import (
     AnalystRecommendation,
     CompanyInfo,
     CryptoDataPoint,
-    EarningsEstimate,
     FinancialStatementRecord,
     FinancialStatementResponse,
     MarketDataPoint,
@@ -43,7 +42,7 @@ class FMPClient:
             else None
         )
         if not self._api_key:
-            logger.warning("FMPClient: no API key configured, all calls will return empty")
+            logger.debug("FMPClient: no API key configured, skipping FMP (optional data source)")
 
     def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         if not self._api_key:
@@ -128,29 +127,40 @@ class FMPClient:
         statement_type: FinancialStatementType = FinancialStatementType.INCOME_STATEMENT,
         frequency: DataFrequency = DataFrequency.YEARLY,
     ) -> FinancialStatementResponse:
-        empty = FinancialStatementResponse(ticker=ticker, statement_type=statement_type, frequency=frequency)
+        empty = FinancialStatementResponse(ticker=ticker, statement_type=statement_type)
         ep = _STATEMENT_EP.get(statement_type)
         if not ep:
             return empty
-        period_param = "quarter" if frequency == DataFrequency.QUARTERLY else "annual"
+        quarterly = frequency == DataFrequency.QUARTERLY
+        period_param = "quarter" if quarterly else "annual"
         data = self._get(f"{ep}/{ticker}", {"period": period_param})
         if not data or not isinstance(data, list):
             return empty
         records: list[FinancialStatementRecord] = []
         for item in data[:8]:
+            fiscal_year, fiscal_quarter = _fiscal_year_quarter(
+                item.get("date") or item.get("fillingDate"), quarterly
+            )
+            if fiscal_year is None:
+                continue
             records.append(
                 FinancialStatementRecord(
                     ticker=ticker,
-                    end_date=item.get("date", item.get("fillingDate", "")),
+                    statement_type=statement_type,
+                    fiscal_year=fiscal_year,
+                    fiscal_quarter=fiscal_quarter,
                     total_revenue=_safe_float(item.get("revenue")),
                     net_income=_safe_float(item.get("netIncome")),
                     total_assets=_safe_float(item.get("totalAssets")),
                     total_liabilities=_safe_float(item.get("totalLiabilities")),
+                    total_equity=_safe_float(item.get("totalStockholdersEquity")),
                     operating_cash_flow=_safe_float(item.get("operatingCashFlow")),
                     free_cash_flow=_safe_float(item.get("freeCashFlow")),
                 )
             )
-        return FinancialStatementResponse(ticker=ticker, statement_type=statement_type, frequency=frequency, records=records)
+        return FinancialStatementResponse(
+            ticker=ticker, statement_type=statement_type, data=records
+        )
 
     def get_company_info(self, ticker: str) -> CompanyInfo | None:
         data = self._get(f"profile/{ticker}")
@@ -159,12 +169,12 @@ class FMPClient:
         p = data[0]
         return CompanyInfo(
             ticker=ticker,
-            name=p.get("companyName", ""),
-            sector=p.get("sector", ""),
-            industry=p.get("industry", ""),
-            description=p.get("description", ""),
-            market_cap=_safe_int(p.get("mktCap")),
-            exchange=p.get("exchangeShortName", ""),
+            name=p.get("companyName") or None,
+            sector=p.get("sector") or None,
+            industry=p.get("industry") or None,
+            country=p.get("country") or None,
+            description=p.get("description") or None,
+            market_cap=_safe_float(p.get("mktCap")),
         )
 
     def get_analyst_data(self, ticker: str) -> list[AnalystRecommendation]:
@@ -176,9 +186,9 @@ class FMPClient:
             recs.append(
                 AnalystRecommendation(
                     ticker=ticker,
-                    date=item.get("date", ""),
-                    recommendation=item.get("consensus", ""),
+                    rating=item.get("consensus") or None,
                     target_price=_safe_float(item.get("targetPrice")),
+                    rating_date=_parse_date(item.get("date")),
                 )
             )
         return recs
@@ -213,10 +223,20 @@ def _safe_float(v: Any) -> float | None:
         return None
 
 
-def _safe_int(v: Any) -> int | None:
-    if v is None:
+def _parse_date(date_str: Any) -> date | None:
+    if not date_str:
         return None
     try:
-        return int(v)
+        return date.fromisoformat(str(date_str)[:10])
     except (ValueError, TypeError):
         return None
+
+
+def _fiscal_year_quarter(
+    date_str: Any, quarterly: bool
+) -> tuple[int | None, int | None]:
+    d = _parse_date(date_str)
+    if d is None:
+        return None, None
+    quarter = (d.month - 1) // 3 + 1 if quarterly else None
+    return d.year, quarter

@@ -43,7 +43,7 @@ class AppConfig(BaseModel):
 
 class LoggingConfig(BaseModel):
     level: str = Field(default="INFO", description="Logging level for API and CLI commands.")
-    json: bool = Field(
+    json_logs: bool = Field(
         default=False,
         description="Emit newline-delimited JSON logs instead of plain text.",
     )

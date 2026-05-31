@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from fin_agent.adapters.market_data.akshare.client import AKShareClient
 from fin_agent.adapters.market_data.akshare.config import AKShareConfig
@@ -19,6 +20,17 @@ from fin_agent.domain.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+_A_SHARE_RE = re.compile(r"^(sh|sz|bj)?\d{6}$", re.IGNORECASE)
+
+
+def _is_a_share_ticker(ticker: str) -> bool:
+    """纯 6 位大陆代码，或带 sh/sz/bj 前缀的 6 位代码。
+
+    AAPL / 0700.HK / BTC-USD 均为 False。用于决定是否调用 AKShare
+    （中国市场数据源），避免非 A 股 ticker 触发无效的中国接口调用。
+    """
+    return bool(ticker) and bool(_A_SHARE_RE.match(ticker.strip()))
 
 
 def _first_non_none[T](*values: T | None) -> T | None:
@@ -137,7 +149,7 @@ class MarketDataRouter:
         frequency: DataFrequency = DataFrequency.DAILY,
         period: str | None = None,
     ) -> MarketDataResponse:
-        is_a_share = bool(ticker and ticker[0].isdigit()) and asset_type in (
+        is_a_share = _is_a_share_ticker(ticker) and asset_type in (
             AssetType.STOCK, AssetType.ETF, AssetType.INDEX,
         )
         if is_a_share:
@@ -151,8 +163,6 @@ class MarketDataRouter:
         resp = self._yf.get_market_data(ticker, asset_type, frequency=frequency, period=period)
         if resp.data:
             return resp
-        if not is_a_share:
-            return self._ak.get_market_data(ticker, asset_type, frequency=frequency, period=period)
         return MarketDataResponse(ticker=ticker, asset_type=asset_type, frequency=frequency)
 
     def get_financials(
@@ -163,11 +173,13 @@ class MarketDataRouter:
         frequency: DataFrequency = DataFrequency.YEARLY,
     ) -> FinancialStatementResponse:
         resp_a = self._yf.get_financials(ticker, statement_type, frequency=frequency)
-        resp_b = self._ak.get_financials(ticker, statement_type, frequency=frequency)
-        merged_data = _merge_records_by_year(resp_a.data, resp_b.data)
+        merged_data = resp_a.data
+        if _is_a_share_ticker(ticker):
+            resp_b = self._ak.get_financials(ticker, statement_type, frequency=frequency)
+            merged_data = _merge_records_by_year(merged_data, resp_b.data)
         if self._fmp._api_key:
             resp_c = self._fmp.get_financials(ticker, statement_type, frequency=frequency)
-            merged_data = _merge_records_by_year(merged_data, resp_c.records)
+            merged_data = _merge_records_by_year(merged_data, resp_c.data)
         return FinancialStatementResponse(
             ticker=ticker,
             statement_type=statement_type,
@@ -175,9 +187,10 @@ class MarketDataRouter:
         )
 
     def get_analyst_data(self, ticker: str) -> AnalystResponse:
-        resp_a = self._yf.get_analyst_data(ticker)
-        resp_b = self._ak.get_analyst_data(ticker)
-        merged = _merge_analyst_response(resp_a, resp_b)
+        # AKShare analyst data is disabled (stock_rank_forecast_cninfo no longer
+        # exposes per-symbol ratings/EPS forecasts), so analyst data comes from
+        # yfinance (and optionally FMP) for both A-share and non-A-share tickers.
+        merged = self._yf.get_analyst_data(ticker)
         if self._fmp._api_key:
             fmp_recs = self._fmp.get_analyst_data(ticker)
             if fmp_recs:
@@ -186,9 +199,10 @@ class MarketDataRouter:
         return merged
 
     def get_company_info(self, ticker: str) -> CompanyInfo:
-        info_a = self._yf.get_company_info(ticker)
-        info_b = self._ak.get_company_info(ticker)
-        merged = _merge_company_info(info_a, info_b)
+        merged = self._yf.get_company_info(ticker)
+        if _is_a_share_ticker(ticker):
+            info_b = self._ak.get_company_info(ticker)
+            merged = _merge_company_info(merged, info_b)
         if self._fmp._api_key:
             info_c = self._fmp.get_company_info(ticker)
             if info_c:
