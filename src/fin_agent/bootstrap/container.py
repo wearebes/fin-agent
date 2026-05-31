@@ -49,8 +49,14 @@ def _build_run_store(settings: AppSettings) -> RunStore:
 def _build_search_provider(settings: AppSettings):
     provider = settings.providers.default_selection.search
     if provider == SearchProviderName.TAVILY:
+        if not settings.tavily.enabled:
+            logger.info("TavilySearchClient disabled via config, returning no-op client")
+            return TavilySearchClient(settings.tavily.model_copy(update={"api_key": None}))
         logger.info("Using TavilySearchClient")
         return TavilySearchClient(settings.tavily)
+    if not settings.search.enabled:
+        logger.info("ExaSearchClient disabled via config, returning no-op client")
+        return ExaSearchClient(settings.search.model_copy(update={"api_key": None}))
     logger.info("Using ExaSearchClient")
     return ExaSearchClient(settings.search)
 

@@ -128,6 +128,21 @@ class TestGetMarketDataRouting:
         assert len(resp.data) == 1
         yf_instance.get_market_data.assert_called_once()
 
+    @patch("fin_agent.adapters.market_data.router.YFinanceClient")
+    @patch("fin_agent.adapters.market_data.router.AKShareClient")
+    def test_non_a_share_does_not_fall_back_to_akshare(self, MockAK, MockYF):
+        ak_instance = MagicMock()
+        yf_instance = MagicMock()
+        MockAK.return_value = ak_instance
+        MockYF.return_value = yf_instance
+        yf_instance.get_market_data.return_value = _empty_market_resp("AAPL")
+
+        router = MarketDataRouter()
+        resp = router.get_market_data("AAPL", AssetType.STOCK)
+
+        ak_instance.get_market_data.assert_not_called()
+        assert len(resp.data) == 0
+
 
 class TestGetFinancialsFusion:
     @patch("fin_agent.adapters.market_data.router.YFinanceClient")
@@ -138,11 +153,11 @@ class TestGetFinancialsFusion:
         MockAK.return_value = ak_instance
         MockYF.return_value = yf_instance
 
-        yf_instance.get_financials.return_value = _financial_resp("AAPL", 500000.0, None)
-        ak_instance.get_financials.return_value = _financial_resp("AAPL", None, 100000.0)
+        yf_instance.get_financials.return_value = _financial_resp("600519", 500000.0, None)
+        ak_instance.get_financials.return_value = _financial_resp("600519", None, 100000.0)
 
         router = MarketDataRouter()
-        resp = router.get_financials("AAPL", FinancialStatementType.INCOME_STATEMENT)
+        resp = router.get_financials("600519", FinancialStatementType.INCOME_STATEMENT)
 
         assert len(resp.data) == 1
         assert resp.data[0].total_revenue == 500000.0
@@ -156,37 +171,69 @@ class TestGetFinancialsFusion:
         MockAK.return_value = ak_instance
         MockYF.return_value = yf_instance
 
-        yf_instance.get_financials.return_value = _financial_resp("AAPL", 500000.0, None)
-        ak_instance.get_financials.return_value = _financial_resp("AAPL", 480000.0, 100000.0)
+        yf_instance.get_financials.return_value = _financial_resp("600519", 500000.0, None)
+        ak_instance.get_financials.return_value = _financial_resp("600519", 480000.0, 100000.0)
 
         router = MarketDataRouter()
-        resp = router.get_financials("AAPL", FinancialStatementType.INCOME_STATEMENT)
+        resp = router.get_financials("600519", FinancialStatementType.INCOME_STATEMENT)
 
         assert len(resp.data) == 1
         assert resp.data[0].total_revenue == 500000.0
         assert resp.data[0].net_income == 100000.0
 
-
-class TestGetAnalystDataFusion:
     @patch("fin_agent.adapters.market_data.router.YFinanceClient")
     @patch("fin_agent.adapters.market_data.router.AKShareClient")
-    def test_merges_recommendations_dedup_by_firm(self, MockAK, MockYF):
+    def test_non_a_share_skips_akshare(self, MockAK, MockYF):
+        ak_instance = MagicMock()
+        yf_instance = MagicMock()
+        MockAK.return_value = ak_instance
+        MockYF.return_value = yf_instance
+
+        yf_instance.get_financials.return_value = _financial_resp("AAPL", 500000.0, 90000.0)
+
+        router = MarketDataRouter()
+        resp = router.get_financials("AAPL", FinancialStatementType.INCOME_STATEMENT)
+
+        ak_instance.get_financials.assert_not_called()
+        assert len(resp.data) == 1
+        assert resp.data[0].total_revenue == 500000.0
+
+
+class TestGetAnalystDataRouting:
+    """AKShare analyst data is disabled, so router never calls _ak here —
+    analyst data comes from yfinance (and optionally FMP) for all tickers."""
+
+    @patch("fin_agent.adapters.market_data.router.YFinanceClient")
+    @patch("fin_agent.adapters.market_data.router.AKShareClient")
+    def test_a_share_skips_akshare(self, MockAK, MockYF):
+        ak_instance = MagicMock()
+        yf_instance = MagicMock()
+        MockAK.return_value = ak_instance
+        MockYF.return_value = yf_instance
+
+        yf_instance.get_analyst_data.return_value = _analyst_resp("600519", ["Goldman", "Morgan"])
+
+        router = MarketDataRouter()
+        resp = router.get_analyst_data("600519")
+
+        ak_instance.get_analyst_data.assert_not_called()
+        assert len(resp.recommendations) == 2
+
+    @patch("fin_agent.adapters.market_data.router.YFinanceClient")
+    @patch("fin_agent.adapters.market_data.router.AKShareClient")
+    def test_non_a_share_skips_akshare(self, MockAK, MockYF):
         ak_instance = MagicMock()
         yf_instance = MagicMock()
         MockAK.return_value = ak_instance
         MockYF.return_value = yf_instance
 
         yf_instance.get_analyst_data.return_value = _analyst_resp("AAPL", ["Goldman", "Morgan"])
-        ak_instance.get_analyst_data.return_value = _analyst_resp("AAPL", ["Morgan", "中信证券"])
 
         router = MarketDataRouter()
         resp = router.get_analyst_data("AAPL")
 
-        firms = [r.firm for r in resp.recommendations]
-        assert "Goldman" in firms
-        assert "Morgan" in firms
-        assert "中信证券" in firms
-        assert len(resp.recommendations) == 3
+        ak_instance.get_analyst_data.assert_not_called()
+        assert len(resp.recommendations) == 2
 
 
 class TestGetCompanyInfoFusion:
@@ -198,14 +245,58 @@ class TestGetCompanyInfoFusion:
         MockAK.return_value = ak_instance
         MockYF.return_value = yf_instance
 
-        yf_instance.get_company_info.return_value = _company_info("AAPL", "Apple Inc.", None)
-        ak_instance.get_company_info.return_value = _company_info("AAPL", None, "Technology")
+        yf_instance.get_company_info.return_value = _company_info("600519", "贵州茅台", None)
+        ak_instance.get_company_info.return_value = _company_info("600519", None, "白酒")
+
+        router = MarketDataRouter()
+        info = router.get_company_info("600519")
+
+        assert info.name == "贵州茅台"
+        assert info.sector == "白酒"
+
+    @patch("fin_agent.adapters.market_data.router.YFinanceClient")
+    @patch("fin_agent.adapters.market_data.router.AKShareClient")
+    def test_non_a_share_skips_akshare(self, MockAK, MockYF):
+        ak_instance = MagicMock()
+        yf_instance = MagicMock()
+        MockAK.return_value = ak_instance
+        MockYF.return_value = yf_instance
+
+        yf_instance.get_company_info.return_value = _company_info("AAPL", "Apple Inc.", "Technology")
 
         router = MarketDataRouter()
         info = router.get_company_info("AAPL")
 
+        ak_instance.get_company_info.assert_not_called()
         assert info.name == "Apple Inc."
         assert info.sector == "Technology"
+
+
+class TestFMPFusion:
+    @patch("fin_agent.adapters.market_data.router.FMPClient")
+    @patch("fin_agent.adapters.market_data.router.YFinanceClient")
+    @patch("fin_agent.adapters.market_data.router.AKShareClient")
+    def test_financials_merges_fmp_when_key_present(self, MockAK, MockYF, MockFMP):
+        ak_instance = MagicMock()
+        yf_instance = MagicMock()
+        fmp_instance = MagicMock()
+        MockAK.return_value = ak_instance
+        MockYF.return_value = yf_instance
+        MockFMP.return_value = fmp_instance
+        fmp_instance._api_key = "x"
+
+        yf_instance.get_financials.return_value = _financial_resp("AAPL", 500000.0, None)
+        fmp_instance.get_financials.return_value = _financial_resp("AAPL", None, 100000.0)
+
+        router = MarketDataRouter()
+        resp = router.get_financials("AAPL", FinancialStatementType.INCOME_STATEMENT)
+
+        ak_instance.get_financials.assert_not_called()
+        fmp_instance.get_financials.assert_called_once()
+        # Reads resp_c.data (not the non-existent .records) and merges by year.
+        assert len(resp.data) == 1
+        assert resp.data[0].total_revenue == 500000.0
+        assert resp.data[0].net_income == 100000.0
 
 
 class TestGetCryptoDataRouting:

@@ -202,6 +202,9 @@ async def review(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
     try:
         resp = await deps.llm.chat(messages, temperature=0.1, max_tokens=4096)
         review_text = resp.message.content.strip()
+        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", review_text, re.DOTALL)
+        if match:
+            review_text = match.group(1)
         review_data = json.loads(review_text)
         passed = bool(review_data.get("passed", False))
         feedback = str(review_data.get("feedback", ""))
