@@ -7,11 +7,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from fin_agent.bootstrap.container import Container, build_container
 from fin_agent.bootstrap.settings import AppSettings, load_settings
+from fin_agent.interfaces.api.auth_router import build_auth_router
 from fin_agent.interfaces.api.router import build_router
 
 
@@ -28,6 +30,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         run_store = container.run_store
         if hasattr(run_store, "engine"):
             run_store.engine.dispose()
+        user_store = container.user_store
+        if hasattr(user_store, "engine"):
+            user_store.engine.dispose()
         app.state.container = None
 
     app = FastAPI(
@@ -36,7 +41,17 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         docs_url='/docs' if resolved_settings.feature_flags.enable_api_docs else None,
         redoc_url='/redoc' if resolved_settings.feature_flags.enable_api_docs else None,
     )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     app.include_router(build_router())
+    app.include_router(build_auth_router())
 
     project_root = Path(__file__).resolve().parent.parent.parent.parent
     dist_dir = project_root / "frontend" / "dist"

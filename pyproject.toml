@@ -14,7 +14,10 @@ authors = [
 ]
 dependencies = [
   "alembic>=1.13,<2",
+  "email-validator>=2.0,<3",
   "fastapi>=0.115,<1",
+  "bcrypt>=4.0,<5",
+  "PyJWT>=2.8,<3",
   "pydantic>=2.8,<3",
   "pydantic-settings>=2.3,<3",
   "PyYAML>=6.0,<7",

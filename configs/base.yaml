@@ -27,3 +27,6 @@ workflows:
 feature_flags:
   enable_api_docs: true
   enable_trace_storage: true
+auth:
+  algorithm: HS256
+  access_token_expire_minutes: 1440

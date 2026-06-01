@@ -82,10 +82,15 @@ export default function ChatView() {
     if (window.confirm(t('clearConfirm'))) clearSession(currentSessionId)
   }
 
+  const DEFAULT_SESSION_TITLES = [translate('zh', 'defaultSessionTitle'), translate('en', 'defaultSessionTitle')]
+  const chatTitle = session?.title
+    ? DEFAULT_SESSION_TITLES.includes(session.title) ? t('defaultSessionTitle') : session.title
+    : ''
+
   return (
     <section className="chat">
       <header className="chat-header">
-        <span className="chat-title">{session?.title ?? ''}</span>
+        <span className="chat-title">{chatTitle}</span>
         {messages.length > 0 && (
           <button className="ghost-btn" onClick={onClear} disabled={running}>
             <Eraser size={14} />

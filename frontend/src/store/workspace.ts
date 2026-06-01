@@ -64,6 +64,8 @@ interface WorkspaceState {
   addMessage: (msg: NewMessage) => string
   updateMessage: (id: string, patch: Partial<Omit<Message, 'id'>>) => void
   clearSession: (sessionId: string) => void
+  deleteProject: (projectId: string) => void
+  deleteSession: (sessionId: string) => void
   setLang: (lang: Lang) => void
   setShowThinking: (v: boolean) => void
 }
@@ -238,6 +240,37 @@ export const useWorkspace = create<WorkspaceState>()(
       clearSession: (sessionId) => {
         set((state) => ({
           messages: state.messages.filter((m) => m.sessionId !== sessionId),
+        }))
+      },
+
+      deleteProject: (projectId) => {
+        const s = get()
+        const sessionIds = s.sessions
+          .filter((se) => se.projectId === projectId)
+          .map((se) => se.id)
+        set((state) => ({
+          projects: state.projects.filter((p) => p.id !== projectId),
+          sessions: state.sessions.filter((se) => se.projectId !== projectId),
+          messages: state.messages.filter((m) => !sessionIds.includes(m.sessionId)),
+          currentProjectId:
+            state.currentProjectId === projectId
+              ? state.projects.find((p) => p.id !== projectId)?.id ?? null
+              : state.currentProjectId,
+          currentSessionId:
+            sessionIds.includes(state.currentSessionId ?? '')
+              ? null
+              : state.currentSessionId,
+        }))
+      },
+
+      deleteSession: (sessionId) => {
+        const s = get()
+        const session = s.sessions.find((se) => se.id === sessionId)
+        set((state) => ({
+          sessions: state.sessions.filter((se) => se.id !== sessionId),
+          messages: state.messages.filter((m) => m.sessionId !== sessionId),
+          currentSessionId:
+            state.currentSessionId === sessionId ? null : state.currentSessionId,
         }))
       },
 

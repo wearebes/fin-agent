@@ -120,6 +120,21 @@ class FeatureFlagsConfig(BaseModel):
     )
 
 
+class AuthSettings(BaseModel):
+    secret_key: SecretStr = Field(
+        default=SecretStr("change-me-in-production"),
+        description="JWT signing secret key. Must be changed in production.",
+    )
+    algorithm: str = Field(
+        default="HS256",
+        description="JWT signing algorithm.",
+    )
+    access_token_expire_minutes: int = Field(
+        default=1440,
+        description="JWT access token expiration time in minutes (default 24h).",
+    )
+
+
 def _read_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"Configuration file '{path}' does not exist.")
@@ -199,6 +214,7 @@ class AppSettings(BaseSettings):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     workflows: WorkflowsConfig = Field(default_factory=WorkflowsConfig)
     feature_flags: FeatureFlagsConfig = Field(default_factory=FeatureFlagsConfig)
+    auth: AuthSettings = Field(default_factory=AuthSettings)
     openai: OpenAIConfig = Field(default_factory=OpenAIConfig)
     market_data: YFinanceConfig = Field(default_factory=YFinanceConfig)
     akshare: AKShareConfig = Field(default_factory=AKShareConfig)
