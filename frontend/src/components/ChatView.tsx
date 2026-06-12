@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { Eraser, Sparkles } from 'lucide-react'
 import { postResearchRun } from '../api/research'
 import { translate } from '../i18n'
+import type { ResearchMode } from '../types'
 import { useWorkspace } from '../store/workspace'
 import Composer from './Composer'
 import MessageBubble from './MessageBubble'
@@ -15,6 +16,7 @@ export default function ChatView() {
   const addMessage = useWorkspace((s) => s.addMessage)
   const updateMessage = useWorkspace((s) => s.updateMessage)
   const clearSession = useWorkspace((s) => s.clearSession)
+  const planMode = useWorkspace((s) => s.planMode)
   const t = (k: string) => translate(lang, k)
 
   const session = sessions.find((se) => se.id === currentSessionId) ?? null
@@ -39,14 +41,24 @@ export default function ChatView() {
     if (el) el.scrollTop = el.scrollHeight
   }, [messages.length, running])
 
-  const submit = (question: string, ticker: string | null) => {
+  const submit = (
+    question: string,
+    ticker: string | null,
+    selectedSkill: string | null,
+    mode?: ResearchMode,
+  ) => {
     if (!currentSessionId || running) return
+    // `mode` is optional so `MessageBubble`'s 3-arg `onRetry(...)` call site
+    // (and its prop type) need no change — a retry simply re-derives the mode
+    // from the current `planMode` preference, same as a fresh submission.
+    const effectiveMode: ResearchMode = mode ?? (planMode ? 'plan' : 'auto')
     addMessage({
       sessionId: currentSessionId,
       role: 'user',
       content: question,
       status: 'completed',
       ticker,
+      selectedSkill,
     })
     // Optimistic "running" assistant bubble. `content` carries the question so a
     // failed bubble can be retried without scanning neighbours.
@@ -56,10 +68,11 @@ export default function ChatView() {
       content: question,
       status: 'running',
       ticker,
+      selectedSkill,
     })
     const startedAt = Date.now()
     mutation.mutate(
-      { question, ticker, lang },
+      { question, ticker, lang, selectedSkill, mode: effectiveMode },
       {
         onSuccess: (result) =>
           updateMessage(assistantId, {

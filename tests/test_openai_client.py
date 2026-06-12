@@ -1,29 +1,54 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
 from fin_agent.adapters.llm.openai import OpenAIClient, OpenAIConfig
-from fin_agent.domain.types import LLMMessage, LLMResponse
+from fin_agent.adapters.llm.openai.client import (
+    _from_openai_message,
+    _to_openai_message,
+    _to_openai_tool,
+)
+from fin_agent.domain.types import (
+    LLMMessage,
+    LLMResponse,
+    ToolCall,
+    ToolDefinition,
+)
 
 
 def _make_message(
     role: str = "assistant",
     content: str | None = "Hello!",
+    tool_calls: list | None = None,
 ) -> MagicMock:
     msg = MagicMock()
     msg.role = role
     msg.content = content
+    # Real SDK exposes None (not a sentinel) when no tools are requested.
+    msg.tool_calls = tool_calls
     return msg
+
+
+def _make_tool_call(call_id: str, name: str, arguments: str) -> MagicMock:
+    tc = MagicMock()
+    tc.id = call_id
+    tc.function = MagicMock()
+    tc.function.name = name
+    tc.function.arguments = arguments
+    return tc
 
 
 def _make_choice(
     message: MagicMock | None = None,
+    finish_reason: str = "stop",
 ) -> MagicMock:
     choice = MagicMock()
     choice.message = message or _make_message()
+    choice.finish_reason = finish_reason
     return choice
 
 
@@ -261,6 +286,156 @@ class TestChatWithBaseUrl:
         call_kwargs = mock_client.chat.completions.create.call_args
         assert call_kwargs.kwargs["model"] == "glm-5.1"
         assert resp.model == "glm-5.1"
+
+
+class TestToolCallConversion:
+    def test_from_openai_message_decodes_tool_calls(self):
+        msg = _make_message(
+            "assistant",
+            None,
+            tool_calls=[
+                _make_tool_call(
+                    "call_abc", "search", '{"query": "AAPL Q3", "max_results": 5}'
+                )
+            ],
+        )
+        result = _from_openai_message(msg)
+        assert result.role == "assistant"
+        assert result.content == ""
+        assert result.tool_calls is not None
+        assert len(result.tool_calls) == 1
+        tc = result.tool_calls[0]
+        assert tc.id == "call_abc"
+        assert tc.name == "search"
+        assert tc.arguments == {"query": "AAPL Q3", "max_results": 5}
+
+    def test_from_openai_message_bad_arguments_degrade_to_empty(self):
+        msg = _make_message(
+            "assistant",
+            None,
+            tool_calls=[_make_tool_call("call_x", "search", "{not valid json")],
+        )
+        result = _from_openai_message(msg)
+        assert result.tool_calls[0].arguments == {}
+
+    def test_from_openai_message_no_tool_calls(self):
+        msg = _make_message("assistant", "Final answer.", tool_calls=None)
+        result = _from_openai_message(msg)
+        assert result.tool_calls is None
+        assert result.content == "Final answer."
+
+    def test_to_openai_message_assistant_tool_call_round_trip(self):
+        m = LLMMessage(
+            role="assistant",
+            content="",
+            tool_calls=[
+                ToolCall(id="call_1", name="market_data", arguments={"ticker": "AAPL"})
+            ],
+        )
+        out = _to_openai_message(m)
+        assert out["role"] == "assistant"
+        assert out["content"] is None
+        assert len(out["tool_calls"]) == 1
+        call = out["tool_calls"][0]
+        assert call["id"] == "call_1"
+        assert call["type"] == "function"
+        assert call["function"]["name"] == "market_data"
+        # arguments must be a JSON *string*, not a dict.
+        assert json.loads(call["function"]["arguments"]) == {"ticker": "AAPL"}
+
+    def test_to_openai_message_tool_result(self):
+        m = LLMMessage(
+            role="tool", tool_call_id="call_1", name="market_data", content="[]"
+        )
+        out = _to_openai_message(m)
+        assert out == {"role": "tool", "tool_call_id": "call_1", "content": "[]"}
+
+    def test_to_openai_message_plain_message_unchanged(self):
+        m = LLMMessage(role="user", content="hi")
+        assert _to_openai_message(m) == {"role": "user", "content": "hi"}
+
+    def test_to_openai_tool_shape(self):
+        schema = {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        }
+        tool = ToolDefinition(
+            name="search", description="Search the web.", input_schema=schema
+        )
+        out = _to_openai_tool(tool)
+        assert out == {
+            "type": "function",
+            "function": {
+                "name": "search",
+                "description": "Search the web.",
+                "parameters": schema,
+            },
+        }
+
+
+class TestChatWithTools:
+    @patch("fin_agent.adapters.llm.openai.client.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_tools_passed_to_create(self, mock_openai_cls):
+        mock_client = mock_openai_cls.return_value
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_chat_response()
+        )
+
+        client = OpenAIClient()
+        tools = [
+            ToolDefinition(
+                name="search",
+                description="Search.",
+                input_schema={"type": "object", "properties": {}},
+            )
+        ]
+        await client.chat(
+            [LLMMessage(role="user", content="hi")], tools=tools, tool_choice="auto"
+        )
+
+        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        assert "tools" in call_kwargs
+        assert call_kwargs["tools"][0]["function"]["name"] == "search"
+        assert call_kwargs["tool_choice"] == "auto"
+
+    @patch("fin_agent.adapters.llm.openai.client.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_no_tools_key_when_not_provided(self, mock_openai_cls):
+        mock_client = mock_openai_cls.return_value
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_chat_response()
+        )
+
+        client = OpenAIClient()
+        await client.chat([LLMMessage(role="user", content="hi")])
+
+        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        assert "tools" not in call_kwargs
+        assert "tool_choice" not in call_kwargs
+
+    @patch("fin_agent.adapters.llm.openai.client.AsyncOpenAI")
+    @pytest.mark.asyncio
+    async def test_returns_tool_calls_and_finish_reason(self, mock_openai_cls):
+        mock_client = mock_openai_cls.return_value
+        tool_msg = _make_message(
+            "assistant",
+            None,
+            tool_calls=[_make_tool_call("call_z", "search", '{"query": "x"}')],
+        )
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_chat_response(
+                choices=[_make_choice(tool_msg, finish_reason="tool_calls")]
+            )
+        )
+
+        client = OpenAIClient()
+        resp = await client.chat([LLMMessage(role="user", content="hi")])
+
+        assert resp.has_tool_calls is True
+        assert resp.finish_reason == "tool_calls"
+        assert resp.tool_calls[0].name == "search"
 
 
 class TestConfigIntegration:

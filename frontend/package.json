@@ -20,8 +20,6 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
-    "@esbuild/linux-x64": "^0.28.0",
-    "@rollup/rollup-linux-x64-gnu": "^4.60.4",
     "@types/node": "^20.16.0",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",

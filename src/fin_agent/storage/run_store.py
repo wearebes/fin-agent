@@ -14,10 +14,17 @@ class RunStore(Protocol):
 
     def get_trace(self, run_id: str) -> list[TraceRecord] | None: ...
 
+    def save_context(self, run_id: str, context_json: str) -> None: ...
+
+    def get_context(self, run_id: str) -> str | None: ...
+
+    def delete_context(self, run_id: str) -> None: ...
+
 
 class InMemoryRunStore:
     def __init__(self) -> None:
         self._runs: dict[str, RunResult] = {}
+        self._contexts: dict[str, str] = {}
 
     def save(self, run: RunResult) -> None:
         self._runs[run.run_id] = run
@@ -30,3 +37,12 @@ class InMemoryRunStore:
         if run is None:
             return None
         return run.trace
+
+    def save_context(self, run_id: str, context_json: str) -> None:
+        self._contexts[run_id] = context_json
+
+    def get_context(self, run_id: str) -> str | None:
+        return self._contexts.get(run_id)
+
+    def delete_context(self, run_id: str) -> None:
+        self._contexts.pop(run_id, None)

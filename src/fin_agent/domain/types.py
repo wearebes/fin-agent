@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -30,6 +30,23 @@ class ResearchRequest(BaseModel):
     lang: str = Field(
         default="zh", description="Output language: 'zh' for native Chinese, 'en' for English."
     )
+    selected_skill: str | None = Field(
+        default=None,
+        description=(
+            "Name of a skill explicitly picked via the '/' picker (matches "
+            "Skill.name from GET /v1/skills). Not parsed from `question` — "
+            "the client sends it as an explicit, opaque catalog key."
+        ),
+    )
+    mode: Literal["auto", "plan"] = Field(
+        default="auto",
+        description=(
+            "'auto' (default) runs the full workflow in one blocking call. "
+            "'plan' pauses after the planning stage in status='awaiting_approval' "
+            "so the caller can review/edit the retrieval plan before resuming "
+            "via POST /v1/research/runs/{run_id}/approve."
+        ),
+    )
 
 
 class EvidenceItem(BaseModel):
@@ -42,6 +59,35 @@ class TraceRecord(BaseModel):
     detail: str
 
 
+class SearchPlanItem(BaseModel):
+    query: str = Field(..., description="Search query string.")
+    max_results: int = Field(default=5, ge=1, le=20)
+
+
+class MarketDataPlanItem(BaseModel):
+    ticker: str = Field(..., description="Ticker symbol.")
+    asset_type: AssetType = Field(default=AssetType.STOCK)
+    frequency: DataFrequency = Field(default=DataFrequency.DAILY)
+    period: str = Field(default="1y")
+
+
+class FinancialsPlanItem(BaseModel):
+    ticker: str = Field(..., description="Ticker symbol.")
+    statement_type: FinancialStatementType = Field(
+        default=FinancialStatementType.INCOME_STATEMENT
+    )
+    frequency: DataFrequency = Field(default=DataFrequency.YEARLY)
+
+
+class RetrievalPlan(BaseModel):
+    search_queries: list[SearchPlanItem] = Field(default_factory=list)
+    market_data: list[MarketDataPlanItem] = Field(default_factory=list)
+    financials: list[FinancialsPlanItem] = Field(default_factory=list)
+    fetch_company_info_tickers: list[str] = Field(default_factory=list)
+    fetch_analyst_data_tickers: list[str] = Field(default_factory=list)
+    fetch_crypto_tickers: list[str] = Field(default_factory=list)
+
+
 class RunResult(BaseModel):
     run_id: str
     status: RunStatus
@@ -49,6 +95,13 @@ class RunResult(BaseModel):
     request: ResearchRequest
     providers: dict[str, str]
     planned_stages: list[str]
+    plan: RetrievalPlan | None = Field(
+        default=None,
+        description=(
+            "Retrieval plan, populated when status=='awaiting_approval' "
+            "(mode='plan') and echoed on the final result for transparency."
+        ),
+    )
     report: str = Field(default="", description="Synthesized research report text.")
     evidence: list[EvidenceItem]
     trace: list[TraceRecord]
@@ -229,9 +282,53 @@ class SearchResponse(BaseModel):
     results: list[SearchResultItem] = Field(default_factory=list)
 
 
+class ToolDefinition(BaseModel):
+    """MCP-compatible tool / function definition.
+
+    ``input_schema`` is a raw JSON Schema dict — the same shape as MCP's
+    ``Tool.inputSchema`` and OpenAI's ``function.parameters``. A single
+    definition can be fed losslessly to either side, which is what lets the
+    tool registry act as the future MCP insertion seam.
+    """
+
+    name: str = Field(..., description="Tool name (unique within a registry).")
+    description: str = Field(default="", description="Human/LLM-readable description.")
+    input_schema: JsonDict = Field(
+        default_factory=lambda: {"type": "object", "properties": {}},
+        description="Raw JSON Schema for the tool arguments.",
+    )
+    source: str = Field(
+        default="local",
+        description="'local' or 'mcp:<server_name>', reserved for future MCP wiring.",
+    )
+
+
+class ToolCall(BaseModel):
+    """A single tool invocation requested by the assistant."""
+
+    id: str = Field(..., description="Provider-assigned call id, echoed in the result.")
+    name: str = Field(..., description="Name of the tool to invoke.")
+    arguments: JsonDict = Field(
+        default_factory=dict, description="Parsed tool arguments (decoded JSON object)."
+    )
+
+
 class LLMMessage(BaseModel):
-    role: str = Field(..., description="Message role: system/user/assistant.")
-    content: str = Field(..., description="Message content.")
+    role: str = Field(
+        ..., description="Message role: system/user/assistant/tool."
+    )
+    content: str = Field(default="", description="Message content.")
+    tool_calls: list[ToolCall] | None = Field(
+        default=None,
+        description="Populated when the assistant requests tool calls.",
+    )
+    tool_call_id: str | None = Field(
+        default=None,
+        description="For role='tool': the ToolCall.id this result answers.",
+    )
+    name: str | None = Field(
+        default=None, description="For role='tool': the tool name."
+    )
 
 
 class LLMResponse(BaseModel):
@@ -247,6 +344,17 @@ class LLMResponse(BaseModel):
     usage_completion_tokens: int | None = Field(
         default=None, description="Completion token count."
     )
+    finish_reason: str | None = Field(
+        default=None, description="Provider finish reason (stop/tool_calls/...)."
+    )
+
+    @property
+    def tool_calls(self) -> list[ToolCall]:
+        return self.message.tool_calls or []
+
+    @property
+    def has_tool_calls(self) -> bool:
+        return bool(self.message.tool_calls)
 
 
 class MacroDataPoint(BaseModel):

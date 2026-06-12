@@ -1,8 +1,14 @@
 // Manual mirror of the backend pydantic models in
 // src/fin_agent/domain/types.py. Keep field names/types in sync.
 
-export type RunStatus = 'pending' | 'running' | 'completed' | 'failed'
+export type RunStatus = 'pending' | 'running' | 'completed' | 'awaiting_approval' | 'failed'
 export type Lang = 'zh' | 'en'
+
+// `mode: 'plan'` makes the backend run only `intake`+`plan`, return a
+// `RunResult` with `status: 'awaiting_approval'` and a populated `plan`, and
+// pause for review. `'auto'` (the default) preserves today's single-shot
+// behavior end to end.
+export type ResearchMode = 'auto' | 'plan'
 
 export interface ResearchRequest {
   question: string
@@ -12,6 +18,11 @@ export interface ResearchRequest {
   // frontend; do not expect it to change backend behavior.
   template: string
   lang: Lang
+  // Name of a skill explicitly picked via the composer's '/' dropdown — an
+  // opaque catalog key matching `Skill.name` from `GET /v1/skills`. Never
+  // parsed from `question` server-side; `null` means "no skill selected".
+  selected_skill: string | null
+  mode: ResearchMode
 }
 
 export interface EvidenceItem {
@@ -24,6 +35,33 @@ export interface TraceRecord {
   detail: string
 }
 
+export interface SearchPlanItem {
+  query: string
+  max_results: number
+}
+
+export interface MarketDataPlanItem {
+  ticker: string
+  asset_type: string
+  frequency: string
+  period: string
+}
+
+export interface FinancialsPlanItem {
+  ticker: string
+  statement_type: string
+  frequency: string
+}
+
+export interface RetrievalPlan {
+  search_queries: SearchPlanItem[]
+  market_data: MarketDataPlanItem[]
+  financials: FinancialsPlanItem[]
+  fetch_company_info_tickers: string[]
+  fetch_analyst_data_tickers: string[]
+  fetch_crypto_tickers: string[]
+}
+
 export interface RunResult {
   run_id: string
   status: RunStatus
@@ -31,6 +69,7 @@ export interface RunResult {
   request: ResearchRequest
   providers: Record<string, string>
   planned_stages: string[]
+  plan: RetrievalPlan | null
   report: string
   evidence: EvidenceItem[]
   trace: TraceRecord[]

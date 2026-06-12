@@ -41,6 +41,8 @@ class RunRow(Base):
     planned_stages_json: Mapped[str] = mapped_column(Text, nullable=False)
     report: Mapped[str] = mapped_column(Text, nullable=False, default="")
     evidence_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    plan_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    context_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )

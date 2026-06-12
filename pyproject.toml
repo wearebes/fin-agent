@@ -20,6 +20,7 @@ dependencies = [
   "PyJWT>=2.8,<3",
   "pydantic>=2.8,<3",
   "pydantic-settings>=2.3,<3",
+  "python-multipart>=0.0.9,<1",
   "PyYAML>=6.0,<7",
   "SQLAlchemy>=2.0,<3",
   "typer>=0.12,<1",

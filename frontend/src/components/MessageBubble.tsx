@@ -4,6 +4,7 @@ import type { Lang } from '../types'
 import type { Message } from '../store/workspace'
 import { useWorkspace } from '../store/workspace'
 import AssistantResult from './AssistantResult'
+import PlanApprovalPanel from './PlanApprovalPanel'
 
 export default function MessageBubble({
   message,
@@ -12,7 +13,7 @@ export default function MessageBubble({
 }: {
   message: Message
   lang: Lang
-  onRetry: (question: string, ticker: string | null) => void
+  onRetry: (question: string, ticker: string | null, selectedSkill: string | null) => void
 }) {
   const t = (k: string) => translate(lang, k)
   const showThinking = useWorkspace((s) => s.showThinking)
@@ -22,7 +23,14 @@ export default function MessageBubble({
       <div className="msg user">
         <div className="bubble user-bubble">
           <div className="bubble-text">{message.content}</div>
-          {message.ticker && <span className="ticker-chip">{message.ticker}</span>}
+          {(message.ticker || message.selectedSkill) && (
+            <div className="bubble-chips">
+              {message.selectedSkill && (
+                <span className="skill-chip">/{message.selectedSkill}</span>
+              )}
+              {message.ticker && <span className="ticker-chip">{message.ticker}</span>}
+            </div>
+          )}
         </div>
       </div>
     )
@@ -47,7 +55,9 @@ export default function MessageBubble({
             {message.error && <p className="error-text">{message.error}</p>}
             <button
               className="retry-btn"
-              onClick={() => onRetry(message.content, message.ticker ?? null)}
+              onClick={() =>
+                onRetry(message.content, message.ticker ?? null, message.selectedSkill ?? null)
+              }
             >
               <RotateCcw size={13} />
               {t('retry')}
@@ -55,7 +65,10 @@ export default function MessageBubble({
           </div>
         )}
 
-        {message.status === 'completed' && message.result && (
+        {message.status === 'completed' && message.result && message.result.status === 'awaiting_approval' && (
+          <PlanApprovalPanel result={message.result} messageId={message.id} lang={lang} />
+        )}
+        {message.status === 'completed' && message.result && message.result.status !== 'awaiting_approval' && (
           <AssistantResult
             result={message.result}
             lang={lang}

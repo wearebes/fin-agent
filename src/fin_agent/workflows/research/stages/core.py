@@ -5,14 +5,16 @@ import logging
 import re
 from uuid import uuid4
 
-from fin_agent.domain.types import EvidenceItem, LLMMessage, TraceRecord
-from fin_agent.workflows.research.context import (
+from fin_agent.domain.types import (
+    EvidenceItem,
     FinancialsPlanItem,
+    LLMMessage,
     MarketDataPlanItem,
-    ResearchContext,
     RetrievalPlan,
     SearchPlanItem,
+    TraceRecord,
 )
+from fin_agent.workflows.research.context import ResearchContext
 from fin_agent.workflows.research.lang import get_lang_instruction
 from fin_agent.workflows.research.stages import StageDeps
 
@@ -37,7 +39,18 @@ The JSON must have exactly these keys:
 Be specific and targeted. Limit searches to 3-5 queries.
 Only include items relevant to the question.
 Respond with ONLY the JSON object, no markdown fences.
+
+The downstream execution stage has access to the following tools; plan your
+retrieval so that it lines up with what these tools can actually fetch:
+{tool_catalog}
 """
+
+
+def _render_tool_catalog(deps: StageDeps) -> str:
+    definitions = deps.tool_registry.definitions()
+    if not definitions:
+        return "(no tools registered)"
+    return "\n".join(f"- {d.name}: {d.description}" for d in definitions)
 
 
 async def intake(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
@@ -58,7 +71,12 @@ async def plan(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
         user_content += f"\nTicker: {ctx.request.ticker}"
 
     lang_instruction = get_lang_instruction(ctx.request.lang)
-    system_content = PLAN_SYSTEM_PROMPT + "\n" + lang_instruction
+    tool_catalog = _render_tool_catalog(deps)
+    system_content = (
+        PLAN_SYSTEM_PROMPT.format(tool_catalog=tool_catalog) + "\n" + lang_instruction
+    )
+    if ctx.skill_instructions:
+        system_content = ctx.skill_instructions + "\n\n" + system_content
 
     messages = [
         LLMMessage(role="system", content=system_content),
