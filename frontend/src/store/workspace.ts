@@ -30,6 +30,7 @@ export interface Message {
   status: MessageStatus
   result?: RunResult
   ticker?: string | null
+  selectedSkill?: string | null
   error?: string
   durationMs?: number
   createdAt: number
@@ -43,6 +44,7 @@ export interface NewMessage {
   status: MessageStatus
   result?: RunResult
   ticker?: string | null
+  selectedSkill?: string | null
   error?: string
 }
 
@@ -54,6 +56,7 @@ interface WorkspaceState {
   currentSessionId: string | null
   lang: Lang
   showThinking: boolean
+  planMode: boolean
 
   ensureDefaults: () => void
   createProject: () => { project: Project; session: Session }
@@ -68,6 +71,7 @@ interface WorkspaceState {
   deleteSession: (sessionId: string) => void
   setLang: (lang: Lang) => void
   setShowThinking: (v: boolean) => void
+  setPlanMode: (v: boolean) => void
 }
 
 const uid = (): string =>
@@ -90,6 +94,7 @@ export const useWorkspace = create<WorkspaceState>()(
       currentSessionId: null,
       lang: 'zh',
       showThinking: false,
+      planMode: false,
 
       ensureDefaults: () => {
         const s = get()
@@ -264,8 +269,6 @@ export const useWorkspace = create<WorkspaceState>()(
       },
 
       deleteSession: (sessionId) => {
-        const s = get()
-        const session = s.sessions.find((se) => se.id === sessionId)
         set((state) => ({
           sessions: state.sessions.filter((se) => se.id !== sessionId),
           messages: state.messages.filter((m) => m.sessionId !== sessionId),
@@ -286,6 +289,7 @@ export const useWorkspace = create<WorkspaceState>()(
       },
 
       setShowThinking: (v) => set({ showThinking: v }),
+      setPlanMode: (v) => set({ planMode: v }),
     }),
     {
       name: 'fin-agent-workspace-v1',
@@ -299,6 +303,7 @@ export const useWorkspace = create<WorkspaceState>()(
         currentSessionId: state.currentSessionId,
         lang: state.lang,
         showThinking: state.showThinking,
+        planMode: state.planMode,
       }),
       // On reload there is no in-flight fetch backing a persisted "running"
       // optimistic bubble, so it would otherwise hang forever and keep the

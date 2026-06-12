@@ -530,14 +530,28 @@ button {
   white-space: pre-wrap;
   word-break: break-word;
 }
-.ticker-chip {
+.bubble-chips {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
   align-self: flex-start;
+}
+.ticker-chip,
+.skill-chip {
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.03em;
   padding: 2px 8px;
   border-radius: 980px;
+}
+.ticker-chip {
   background: rgba(255, 255, 255, 0.22);
+}
+.skill-chip {
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 .assistant-bubble {
   width: 100%;
@@ -572,6 +586,10 @@ button {
 .status-pill.failed {
   background: rgba(255, 69, 58, 0.07);
   color: var(--red);
+}
+.status-pill.awaiting {
+  background: rgba(255, 159, 10, 0.08);
+  color: #c2740a;
 }
 .status-dot {
   width: 7px;
@@ -626,6 +644,20 @@ button {
 .evidence-card:hover {
   border-color: rgba(0, 113, 227, 0.4);
   background: var(--w);
+}
+
+/* plan approval panel (Phase 2 — Plan Mode) */
+.plan-panel { display: flex; flex-direction: column; gap: 4px; }
+.plan-group { margin-bottom: 10px; }
+.plan-group-label { font-size: 0.74rem; font-weight: 600; color: var(--g500); margin-bottom: 4px; }
+.plan-group-items { margin: 0; padding-left: 18px; font-size: 0.82rem; color: var(--g600); line-height: 1.6; }
+.plan-empty { font-size: 0.82rem; color: var(--g500); font-style: italic; }
+.plan-actions { display: flex; gap: 8px; margin-top: 12px; }
+.plan-edit-hint { font-size: 0.76rem; color: var(--g500); margin-bottom: 6px; }
+.plan-edit-textarea {
+  width: 100%; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.78rem;
+  line-height: 1.5; padding: 12px; border-radius: 10px; border: 0.5px solid var(--g200);
+  background: var(--g50); color: var(--g700); resize: vertical; min-height: 220px;
 }
 .evidence-source {
   font-size: 0.66rem;
@@ -923,6 +955,7 @@ button {
   background: linear-gradient(180deg, rgba(245, 245, 247, 0), var(--g100) 40%);
 }
 .composer-card {
+  position: relative;
   max-width: 760px;
   margin: 0 auto;
   background: var(--w);
@@ -1004,6 +1037,110 @@ button {
 .send-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* '/'-triggered skill picker dropdown, anchored above the composer card */
+.skill-picker {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: 8px;
+  background: var(--w);
+  border: 0.5px solid var(--g200);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0.5px 4px rgba(0, 0, 0, 0.03), 0 12px 32px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  animation: slideUp 0.16s var(--ease);
+  z-index: 20;
+}
+.skill-picker-list {
+  list-style: none;
+  max-height: 224px;
+  overflow-y: auto;
+  padding: 6px;
+}
+.skill-picker-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: background 0.12s var(--ease);
+}
+.skill-picker-item.active {
+  background: var(--g100);
+}
+.skill-picker-slash {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--blue);
+}
+.skill-picker-desc {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.76rem;
+  color: var(--g600);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skill-picker-empty {
+  padding: 16px;
+  font-size: 0.78rem;
+  color: var(--g400);
+  text-align: center;
+}
+.skill-picker-hint {
+  padding: 7px 12px;
+  font-size: 0.64rem;
+  color: var(--g400);
+  border-top: 0.5px solid var(--g200);
+  background: var(--g50);
+  white-space: nowrap;
+}
+
+/* Active-skill indicator pinned above the textarea inside the composer card */
+.composer-skill-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  margin-bottom: 10px;
+  padding: 6px 8px 6px 14px;
+  border-radius: 980px;
+  background: linear-gradient(135deg, rgba(0, 113, 227, 0.1), rgba(191, 90, 242, 0.1));
+  border: 0.5px solid rgba(0, 113, 227, 0.22);
+  font-size: 0.74rem;
+}
+.composer-skill-slash {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--blue);
+}
+.composer-skill-desc {
+  min-width: 0;
+  color: var(--g600);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-skill-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  color: var(--g500);
+  transition: all 0.15s var(--ease);
+}
+.composer-skill-clear:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--g800);
 }
 
 /* ============================================================
@@ -1462,6 +1599,204 @@ button {
 }
 .link-btn:hover {
   text-decoration: underline;
+}
+
+/* skills management page */
+.skills-card {
+  max-width: 620px;
+}
+
+.skills-section {
+  margin-top: 24px;
+}
+
+.skills-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--g900);
+  margin: 0 0 12px;
+}
+
+.skills-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--g100);
+  color: var(--g600);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.skills-hint {
+  font-size: 0.82rem;
+  color: var(--g500);
+  margin: 0;
+}
+
+.skill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skill-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 0.5px solid var(--g200);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.skill-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.skill-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.skill-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--g900);
+}
+
+.skill-trigger {
+  font-family: var(--mono, ui-monospace, "SFMono-Regular", monospace);
+  font-size: 0.76rem;
+  color: var(--g500);
+}
+
+.skill-desc {
+  font-size: 0.8rem;
+  color: var(--g600);
+}
+
+.skill-source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.skill-source-badge.builtin {
+  background: var(--g100);
+  color: var(--g600);
+}
+.skill-source-badge.external {
+  background: #f0fdf4;
+  color: var(--green);
+}
+
+.skill-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--g300);
+  background: #fff;
+  color: var(--g600);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.skill-delete-btn:hover {
+  border-color: var(--red);
+  color: var(--red);
+  background: #fef2f2;
+}
+.skill-delete-btn.confirming {
+  border-color: var(--red);
+  color: #fff;
+  background: var(--red);
+}
+.skill-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.skill-locked {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--g400);
+}
+
+.skills-install-row {
+  display: flex;
+  gap: 10px;
+}
+.skills-install-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  border: 0.5px solid var(--g300);
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  color: var(--g900);
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.skills-install-row input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
+}
+.skills-install-row input::placeholder {
+  color: var(--g400);
+}
+.skills-install-row .form-submit {
+  flex-shrink: 0;
+}
+
+.skills-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.toast {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  margin-bottom: 16px;
+}
+.toast-success {
+  background: #f0fdf4;
+  border: 0.5px solid #bbf7d0;
+  color: var(--green);
+}
+.toast-error {
+  background: #fef2f2;
+  border: 0.5px solid #fecaca;
+  color: var(--red);
+}
+
+@media (max-width: 640px) {
+  .skills-install-row,
+  .skills-actions {
+    flex-direction: column;
+  }
 }
 
 .profile-header {

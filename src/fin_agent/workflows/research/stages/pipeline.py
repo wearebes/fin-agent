@@ -3,29 +3,22 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any
 
-from fin_agent.domain.types import EvidenceItem, LLMMessage, TraceRecord
+from fin_agent.domain.types import EvidenceItem, LLMMessage, RetrievalPlan, TraceRecord
 from fin_agent.workflows.research.context import ResearchContext, ToolCallRecord
 from fin_agent.workflows.research.lang import get_lang_instruction
-from fin_agent.workflows.research.stages import StageDeps, ToolRegistry
-from fin_agent.workflows.research.stages.tools import build_default_tool_registry
+from fin_agent.workflows.research.stages import StageDeps
 
 logger = logging.getLogger(__name__)
 
 TOOL_EXEC_SYSTEM_PROMPT = """\
 You are a financial research assistant with access to tools.
-Based on the research question and evidence collected so far, decide if you need
-additional information. If so, call a tool by responding with a JSON block:
-
-```tool_call
-{{"name": "<tool_name>", "arguments": {{<key-value pairs>}}}}
-```
-
-Available tools: {tool_names}
-
-If you have sufficient information, respond with: ```done```
-You may call at most one tool per response.
+You are given a research question, the retrieval plan produced by the planning
+stage, and the evidence gathered so far. Decide whether you need additional
+information and, if so, call one or more of the available tools. You may request
+several tools at once when they are independent. When you have gathered
+sufficient evidence, reply with a final natural-language summary and request no
+further tools.
 """
 
 SYNTHESIZE_SYSTEM_PROMPT = """\
@@ -53,99 +46,150 @@ If the report is adequate, set passed=true.
 """
 
 
-def _parse_tool_call(text: str) -> tuple[str, dict[str, Any]] | None:
-    match = re.search(r"```tool_call\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if not match:
-        return None
-    try:
-        data = json.loads(match.group(1))
-        return data.get("name", ""), data.get("arguments", {})
-    except json.JSONDecodeError:
-        return None
+def _summarize_plan(plan: RetrievalPlan) -> str:
+    """Render the planning stage's RetrievalPlan into a few human-readable lines.
 
-
-def _is_done(text: str) -> bool:
-    return "```done```" in text.lower()
-
-
-def _build_tool_registry(deps: StageDeps) -> ToolRegistry:
-    return build_default_tool_registry(deps.search, deps.market_data)
+    This is the data bridge that lets the execute stage start from what the plan
+    stage actually decided, instead of re-deriving everything from scratch.
+    """
+    lines: list[str] = []
+    if plan.search_queries:
+        queries = ", ".join(f'"{q.query}"' for q in plan.search_queries)
+        lines.append(f"- Planned searches: {queries}")
+    if plan.market_data:
+        tickers = ", ".join(
+            f"{m.ticker} ({m.asset_type.value}, {m.period})" for m in plan.market_data
+        )
+        lines.append(f"- Planned market data: {tickers}")
+    if plan.financials:
+        fins = ", ".join(
+            f"{f.ticker} {f.statement_type.value}" for f in plan.financials
+        )
+        lines.append(f"- Planned financials: {fins}")
+    if plan.fetch_company_info_tickers:
+        lines.append(
+            "- Planned company info: "
+            + ", ".join(plan.fetch_company_info_tickers)
+        )
+    if plan.fetch_analyst_data_tickers:
+        lines.append(
+            "- Planned analyst data: "
+            + ", ".join(plan.fetch_analyst_data_tickers)
+        )
+    if plan.fetch_crypto_tickers:
+        lines.append(
+            "- Planned crypto data: " + ", ".join(plan.fetch_crypto_tickers)
+        )
+    if not lines:
+        return "(no explicit retrieval plan was produced)"
+    return "\n".join(lines)
 
 
 async def tool_exec(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
-    registry = _build_tool_registry(deps)
-    tool_names = ", ".join(registry.available_tools())
+    registry = deps.tool_registry  # shared catalog, no longer rebuilt per call
+    # The LLM provider is provider-neutral: it takes ToolDefinitions and does
+    # the OpenAI-specific conversion internally (one conversion path).
+    tool_definitions = registry.definitions()
     lang_instruction = get_lang_instruction(ctx.request.lang)
-    system_prompt = TOOL_EXEC_SYSTEM_PROMPT.format(tool_names=tool_names) + "\n" + lang_instruction
+    system_prompt = TOOL_EXEC_SYSTEM_PROMPT + "\n" + lang_instruction
+    if ctx.skill_instructions:
+        system_prompt = ctx.skill_instructions + "\n\n" + system_prompt
 
-    evidence_text = "\n".join(
-        f"[{e.source}] {e.summary}" for e in ctx.evidence
-    )
-    user_content = (
-        f"Research question: {ctx.request.question}\n\n"
-        f"Evidence so far:\n{evidence_text}\n\n"
-        f"Tool calls made: {len(ctx.tool_calls)}/{deps.config.max_tool_calls}"
-    )
+    plan_summary = _summarize_plan(ctx.plan)
+    evidence_text = "\n".join(f"[{e.source}] {e.summary}" for e in ctx.evidence)
+    messages: list[LLMMessage] = [
+        LLMMessage(role="system", content=system_prompt),
+        LLMMessage(
+            role="user",
+            content=(
+                f"Research question: {ctx.request.question}\n\n"
+                f"Retrieval plan from the planning stage:\n{plan_summary}\n\n"
+                f"Evidence so far:\n{evidence_text}"
+            ),
+        ),
+    ]
 
     while len(ctx.tool_calls) < deps.config.max_tool_calls:
-        messages = [
-            LLMMessage(role="system", content=system_prompt),
-            LLMMessage(role="user", content=user_content),
-        ]
         try:
-            resp = await deps.llm.chat(messages, temperature=0.1, max_tokens=4096)
+            resp = await deps.llm.chat(
+                messages, temperature=0.1, max_tokens=4096, tools=tool_definitions
+            )
         except Exception:
             logger.exception("tool-exec: LLM call failed")
             break
 
-        text = resp.message.content
-
-        if _is_done(text):
-            ctx.trace.append(
-                TraceRecord(stage="tool-exec", detail="LLM indicated sufficient data")
-            )
-            break
-
-        parsed = _parse_tool_call(text)
-        if parsed is None:
-            ctx.trace.append(
-                TraceRecord(stage="tool-exec", detail="No tool call parsed, ending")
-            )
-            break
-
-        tool_name, arguments = parsed
-        tool_fn = registry.get(tool_name)
-        if tool_fn is None:
+        if not resp.has_tool_calls:
             ctx.trace.append(
                 TraceRecord(
                     stage="tool-exec",
-                    detail=f"Unknown tool: {tool_name}, skipping",
+                    detail="LLM produced final answer, no further tool calls",
                 )
             )
-            user_content += f"\n\nTool '{tool_name}' not found. Try another."
-            continue
+            break
 
-        try:
-            result = await tool_fn(**arguments)
-            result_summary = result[:500] if result else ""
-        except Exception:
-            logger.exception("tool-exec: tool %s failed", tool_name)
-            result_summary = "Tool call failed"
-            result = ""
-
-        record = ToolCallRecord(
-            tool_name=tool_name, arguments=arguments, result_summary=result_summary
+        requested = resp.message.tool_calls or []
+        names = ", ".join(
+            f"{tc.name}({json.dumps(tc.arguments, ensure_ascii=False)})"
+            for tc in requested
         )
-        ctx = ctx.model_copy(
-            update={"tool_calls": ctx.tool_calls + [record]}
-        )
-        ctx.evidence.append(
-            EvidenceItem(
-                source=f"tool:{tool_name}",
-                summary=result_summary,
+        ctx.trace.append(
+            TraceRecord(
+                stage="tool-exec",
+                detail=(
+                    f"Model requested {len(requested)} tool call(s) in parallel: "
+                    f"{names}"
+                ),
             )
         )
-        user_content += f"\n\nTool {tool_name} result: {result_summary}"
+
+        # Replay the assistant tool-call turn into the running conversation.
+        messages.append(resp.message)
+
+        for tc in requested:
+            handler = registry.get(tc.name)
+            try:
+                if handler is None:
+                    result_text = f"Unknown tool '{tc.name}'."
+                else:
+                    result_text = await handler(**tc.arguments)
+            except Exception:
+                logger.exception("tool-exec: tool %s failed", tc.name)
+                result_text = "Tool execution failed."
+            result_text = result_text or ""
+            result_summary = result_text[:500]
+
+            messages.append(
+                LLMMessage(
+                    role="tool",
+                    tool_call_id=tc.id,
+                    name=tc.name,
+                    content=result_text,
+                )
+            )
+            ctx = ctx.model_copy(
+                update={
+                    "tool_calls": ctx.tool_calls
+                    + [
+                        ToolCallRecord(
+                            tool_name=tc.name,
+                            arguments=tc.arguments,
+                            result_summary=result_summary,
+                        )
+                    ]
+                }
+            )
+            ctx.evidence.append(
+                EvidenceItem(source=f"tool:{tc.name}", summary=result_summary)
+            )
+            ctx.trace.append(
+                TraceRecord(
+                    stage="tool-exec",
+                    detail=f"{tc.name} → {result_summary[:200]}",
+                )
+            )
+
+            if len(ctx.tool_calls) >= deps.config.max_tool_calls:
+                break
 
     ctx.trace.append(
         TraceRecord(
@@ -162,6 +206,8 @@ async def synthesize(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
     )
     lang_instruction = get_lang_instruction(ctx.request.lang)
     system_content = SYNTHESIZE_SYSTEM_PROMPT + "\n" + lang_instruction
+    if ctx.skill_instructions:
+        system_content = ctx.skill_instructions + "\n\n" + system_content
     messages = [
         LLMMessage(role="system", content=system_content),
         LLMMessage(

@@ -7,9 +7,13 @@ from typing import Any
 from fin_agent.adapters.market_data import MarketDataProvider
 from fin_agent.adapters.search import SearchProvider
 from fin_agent.domain.constants import AssetType, DataFrequency, FinancialStatementType
+from fin_agent.domain.types import ToolDefinition
 from fin_agent.workflows.research.stages import ToolRegistry
 
 logger = logging.getLogger(__name__)
+
+_ASSET_TYPES = [a.value for a in AssetType]
+_STATEMENT_TYPES = [s.value for s in FinancialStatementType]
 
 
 def _truncate(text: str, limit: int = 4000) -> str:
@@ -145,10 +149,144 @@ def build_default_tool_registry(
     market_data: MarketDataProvider,
 ) -> ToolRegistry:
     registry = ToolRegistry()
-    registry.register("search", SearchTool(search))
-    registry.register("market_data", MarketDataTool(market_data))
-    registry.register("financials", FinancialsTool(market_data))
-    registry.register("company_info", CompanyInfoTool(market_data))
-    registry.register("analyst", AnalystTool(market_data))
-    registry.register("crypto", CryptoTool(market_data))
+    registry.register(
+        ToolDefinition(
+            name="search",
+            description=(
+                "Search the web for current information relevant to the research "
+                "question."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query string.",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return.",
+                        "default": 5,
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+        SearchTool(search),
+    )
+    registry.register(
+        ToolDefinition(
+            name="market_data",
+            description=(
+                "Fetch recent OHLCV market data (price/volume history) for a ticker."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "Ticker symbol, e.g. AAPL or 600519.SS.",
+                    },
+                    "asset_type": {
+                        "type": "string",
+                        "enum": _ASSET_TYPES,
+                        "default": "stock",
+                        "description": "Type of the asset.",
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "Lookback period, e.g. '1y', '6mo', '1mo'.",
+                    },
+                },
+                "required": ["ticker"],
+            },
+        ),
+        MarketDataTool(market_data),
+    )
+    registry.register(
+        ToolDefinition(
+            name="financials",
+            description=(
+                "Fetch financial statements (income statement / balance sheet / "
+                "cash flow) for a ticker."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "Ticker symbol.",
+                    },
+                    "statement_type": {
+                        "type": "string",
+                        "enum": _STATEMENT_TYPES,
+                        "default": "income_statement",
+                        "description": "Which financial statement to fetch.",
+                    },
+                },
+                "required": ["ticker"],
+            },
+        ),
+        FinancialsTool(market_data),
+    )
+    registry.register(
+        ToolDefinition(
+            name="company_info",
+            description=(
+                "Fetch company profile: name, sector, industry, market cap and "
+                "business description."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "Ticker symbol.",
+                    },
+                },
+                "required": ["ticker"],
+            },
+        ),
+        CompanyInfoTool(market_data),
+    )
+    registry.register(
+        ToolDefinition(
+            name="analyst",
+            description=(
+                "Fetch analyst recommendations and earnings estimates for a ticker."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "Ticker symbol.",
+                    },
+                },
+                "required": ["ticker"],
+            },
+        ),
+        AnalystTool(market_data),
+    )
+    registry.register(
+        ToolDefinition(
+            name="crypto",
+            description="Fetch recent price/volume data for a crypto asset.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "type": "string",
+                        "description": "Crypto symbol, e.g. BTC-USD.",
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "Lookback period, e.g. '1y', '6mo'.",
+                    },
+                },
+                "required": ["ticker"],
+            },
+        ),
+        CryptoTool(market_data),
+    )
     return registry

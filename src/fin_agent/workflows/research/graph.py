@@ -39,6 +39,19 @@ def build_stage_plan(config: ResearchWorkflowConfig) -> list[str]:
     return stages
 
 
+def build_resume_stages(config: ResearchWorkflowConfig) -> list[str]:
+    """Stage list for resuming a paused plan-mode run (post-approval).
+
+    Mirrors `build_stage_plan`'s tail — everything after "plan", which already
+    ran before the run was paused in `awaiting_approval`.
+    """
+    stages = ["retrieve", "tool-exec", "synthesize"]
+    if config.enable_review:
+        stages.append("review")
+    stages.append("persist")
+    return stages
+
+
 def register_stage(name: str, fn: StageCallable) -> None:
     _STAGE_REGISTRY[name] = fn
 
@@ -47,9 +60,10 @@ async def execute_workflow(
     ctx: ResearchContext,
     deps: StageDeps,
     *,
+    stages: list[str] | None = None,
     extra_stage_kwargs: dict[str, Any] | None = None,
 ) -> ResearchContext:
-    stage_plan = build_stage_plan(deps.config)
+    stage_plan = stages if stages is not None else build_stage_plan(deps.config)
     for stage_name in stage_plan:
         fn = _STAGE_REGISTRY.get(stage_name)
         if fn is None:

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from fin_agent.domain.types import (
     EvidenceItem,
     ResearchRequest,
+    RetrievalPlan,
     RunResult,
     TraceRecord,
 )
@@ -28,6 +29,7 @@ def _row_to_result(row: RunRow) -> RunResult:
         request=ResearchRequest.model_validate_json(row.request_json),
         providers=json.loads(row.providers_json),
         planned_stages=json.loads(row.planned_stages_json),
+        plan=RetrievalPlan.model_validate_json(row.plan_json) if row.plan_json else None,
         report=row.report,
         evidence=[EvidenceItem.model_validate(e) for e in json.loads(row.evidence_json)],
         trace=[TraceRecord(stage=t.stage, detail=t.detail) for t in row.trace_records],
@@ -45,6 +47,7 @@ def _result_to_row(result: RunResult) -> RunRow:
         providers_json=json.dumps(result.providers),
         planned_stages_json=json.dumps(result.planned_stages),
         report=result.report,
+        plan_json=result.plan.model_dump_json() if result.plan else None,
         evidence_json=json.dumps(
             [e.model_dump(mode="json") for e in result.evidence]
         ),
@@ -84,6 +87,31 @@ class SQLAlchemyRunStore:
             if row is None:
                 return None
             return [TraceRecord(stage=t.stage, detail=t.detail) for t in row.trace_records]
+
+    def save_context(self, run_id: str, context_json: str) -> None:
+        with Session(self._engine) as session:
+            row = session.get(RunRow, run_id)
+            if row is None:
+                logger.warning(
+                    "save_context: no run row for run_id=%s, skipping", run_id
+                )
+                return
+            row.context_json = context_json
+            session.commit()
+
+    def get_context(self, run_id: str) -> str | None:
+        with Session(self._engine) as session:
+            row = session.get(RunRow, run_id)
+            if row is None:
+                return None
+            return row.context_json
+
+    def delete_context(self, run_id: str) -> None:
+        with Session(self._engine) as session:
+            row = session.get(RunRow, run_id)
+            if row is not None:
+                row.context_json = None
+                session.commit()
 
     def list_runs(self, *, limit: int = 50, offset: int = 0) -> Sequence[RunResult]:
         with Session(self._engine) as session:

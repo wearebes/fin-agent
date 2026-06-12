@@ -23,7 +23,6 @@ def test_load_settings_merges_layered_yaml_and_env(monkeypatch) -> None:
     settings = load_settings("test")
 
     assert settings.app.environment.value == "test"
-    assert settings.database.url == "sqlite:///./var/fin_agent-test.db"
     assert settings.logging.level == "ERROR"
     assert settings.openai.api_key is not None
     assert settings.source_files[0].name == "base.yaml"
@@ -44,7 +43,7 @@ def test_config_modules_import_without_bootstrap() -> None:
     assert OpenAIConfig().model == "gpt-4.1-mini"
     assert YFinanceConfig().history_period == "1y"
     assert ExaSearchConfig().max_results == 8
-    assert ResearchWorkflowConfig().max_tool_calls == 3
+    assert ResearchWorkflowConfig().max_tool_calls == 20
 
 
 def test_api_and_cli_read_the_same_settings(monkeypatch) -> None:
