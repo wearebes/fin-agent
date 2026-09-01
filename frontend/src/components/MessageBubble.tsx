@@ -1,22 +1,32 @@
 import { RotateCcw } from 'lucide-react'
 import { translate } from '../i18n'
-import type { Lang } from '../types'
+import type { Lang, ResearchMode, ResearchTurn } from '../types'
 import type { Message } from '../store/workspace'
 import { useWorkspace } from '../store/workspace'
 import AssistantResult from './AssistantResult'
 import PlanApprovalPanel from './PlanApprovalPanel'
+import ResearchProgress from './ResearchProgress'
 
 export default function MessageBubble({
   message,
   lang,
   onRetry,
+  retryDisabled = false,
 }: {
   message: Message
   lang: Lang
-  onRetry: (question: string, ticker: string | null, selectedSkill: string | null) => void
+  onRetry: (
+    question: string,
+    ticker: string | null,
+    selectedSkill: string | null,
+    mode?: ResearchMode,
+    history?: ResearchTurn[],
+  ) => void
+  retryDisabled?: boolean
 }) {
   const t = (k: string) => translate(lang, k)
   const showThinking = useWorkspace((s) => s.showThinking)
+  const failed = message.status === 'failed' || message.result?.status === 'failed'
 
   if (message.role === 'user') {
     return (
@@ -40,24 +50,22 @@ export default function MessageBubble({
     <div className="msg assistant">
       <div className="bubble assistant-bubble">
         {message.status === 'running' && (
-          <div className="status-pill running">
-            <span className="spinner" />
-            {t('running')}
-          </div>
+          <ResearchProgress progress={message.progress} startedAt={message.createdAt} lang={lang} />
         )}
 
-        {message.status === 'failed' && (
+        {failed && (
           <div className="failed-block">
-            <div className="status-pill failed">
+            {!message.result && <div className="status-pill failed">
               <span className="status-dot" />
               {t('errorTitle')}
-            </div>
+            </div>}
             {message.error && <p className="error-text">{message.error}</p>}
             <button
               className="retry-btn"
-              onClick={() =>
-                onRetry(message.content, message.ticker ?? null, message.selectedSkill ?? null)
-              }
+              disabled={retryDisabled}
+              onClick={() => onRetry(message.content, message.ticker ?? null,
+                message.selectedSkill ?? null, undefined,
+                message.history ?? message.result?.request.history ?? [])}
             >
               <RotateCcw size={13} />
               {t('retry')}
@@ -68,7 +76,7 @@ export default function MessageBubble({
         {message.status === 'completed' && message.result && message.result.status === 'awaiting_approval' && (
           <PlanApprovalPanel result={message.result} messageId={message.id} lang={lang} />
         )}
-        {message.status === 'completed' && message.result && message.result.status !== 'awaiting_approval' && (
+        {message.result && message.result.status !== 'awaiting_approval' && (
           <AssistantResult
             result={message.result}
             lang={lang}

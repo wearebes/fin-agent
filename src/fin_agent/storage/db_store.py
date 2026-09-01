@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import json
-import logging
-from typing import Sequence
+from collections.abc import Sequence
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -17,8 +16,6 @@ from fin_agent.domain.types import (
     TraceRecord,
 )
 from fin_agent.storage.models import Base, RunRow, TraceRecordRow
-
-logger = logging.getLogger(__name__)
 
 
 def _row_to_result(row: RunRow) -> RunResult:
@@ -39,10 +36,8 @@ def _row_to_result(row: RunRow) -> RunResult:
 def _result_to_row(result: RunResult) -> RunRow:
     return RunRow(
         run_id=result.run_id,
-        status=result.status.value if hasattr(result.status, "value") else str(result.status),
-        environment=result.environment.value
-        if hasattr(result.environment, "value")
-        else str(result.environment),
+        status=result.status.value,
+        environment=result.environment.value,
         request_json=result.request.model_dump_json(),
         providers_json=json.dumps(result.providers),
         planned_stages_json=json.dumps(result.planned_stages),

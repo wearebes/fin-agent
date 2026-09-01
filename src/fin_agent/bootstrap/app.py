@@ -14,6 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from fin_agent.bootstrap.container import Container, build_container
 from fin_agent.bootstrap.settings import AppSettings, load_settings
 from fin_agent.interfaces.api.auth_router import build_auth_router
+from fin_agent.interfaces.api.codex_router import build_codex_router
+from fin_agent.interfaces.api.model_router import build_model_router
 from fin_agent.interfaces.api.router import build_router
 
 
@@ -44,14 +46,16 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=resolved_settings.runtime.cors_origins,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
     app.include_router(build_router())
     app.include_router(build_auth_router())
+    app.include_router(build_model_router())
+    app.include_router(build_codex_router())
 
     project_root = Path(__file__).resolve().parent.parent.parent.parent
     dist_dir = project_root / "frontend" / "dist"

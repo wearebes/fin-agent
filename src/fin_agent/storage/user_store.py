@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 from uuid import uuid4
@@ -12,38 +13,16 @@ from sqlalchemy.orm import Session
 from fin_agent.storage.models import Base, UserRow
 
 
+@dataclass(slots=True, kw_only=True, eq=False, repr=False)
 class UserInfo:
-    __slots__ = (
-        "id",
-        "username",
-        "email",
-        "display_name",
-        "avatar_url",
-        "is_active",
-        "created_at",
-        "updated_at",
-    )
-
-    def __init__(
-        self,
-        *,
-        id: str,
-        username: str,
-        email: str,
-        display_name: str,
-        avatar_url: str | None,
-        is_active: bool,
-        created_at: datetime,
-        updated_at: datetime,
-    ) -> None:
-        self.id = id
-        self.username = username
-        self.email = email
-        self.display_name = display_name
-        self.avatar_url = avatar_url
-        self.is_active = is_active
-        self.created_at = created_at
-        self.updated_at = updated_at
+    id: str
+    username: str
+    email: str
+    display_name: str
+    avatar_url: str | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
 
 
 class UserStore(Protocol):

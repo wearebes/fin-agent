@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+from collections.abc import AsyncIterator
+from contextlib import suppress
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from fin_agent.domain.types import (
@@ -15,8 +20,61 @@ from fin_agent.domain.types import (
     RunResult,
     TraceResponse,
 )
+from fin_agent.interfaces.api.auth_router import _get_current_user
 from fin_agent.services import skill_installer
+from fin_agent.services.research import ResearchService
 from fin_agent.skills.loader import BUILTIN_SKILLS_DIR
+
+logger = logging.getLogger(__name__)
+
+
+def require_system_model(request: Request) -> None:
+    settings = request.app.state.container.settings
+    if settings.runtime.commercial_mode or not settings.runtime.allow_system_model:
+        raise HTTPException(403, "系统共享模型已关闭，请登录并连接自己的 API。 / Use your own API.")
+
+
+def require_run_access(request: Request, result: RunResult) -> None:
+    owner = result.providers.get("owner_user_id")
+    settings = request.app.state.container.settings
+    if owner:
+        if _get_current_user(request).id != owner:
+            raise HTTPException(404, "Run not found.")
+    elif settings.runtime.commercial_mode:
+        raise HTTPException(404, "Run not found.")
+
+
+async def research_events(payload: ResearchRequest, service: ResearchService) -> AsyncIterator[str]:
+    queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
+
+    async def execute() -> None:
+        try:
+            on_progress = lambda event: queue.put_nowait(("progress", event.model_dump_json()))
+            result = (
+                await service.run_plan(payload, on_progress=on_progress)
+                if payload.mode == "plan"
+                else await service.run(payload, on_progress=on_progress)
+            )
+            queue.put_nowait(("result", result.model_dump_json()))
+        except Exception:
+            logger.exception("Streaming research failed")
+            queue.put_nowait(("error", '{"message":"Research could not be completed."}'))
+
+    task = asyncio.create_task(execute())
+    try:
+        while True:
+            try:
+                event, data = await asyncio.wait_for(queue.get(), timeout=15)
+            except TimeoutError:
+                yield ": keep-alive\n\n"
+                continue
+            yield f"event: {event}\ndata: {data}\n\n"
+            if event in {"result", "error"}:
+                break
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
 
 
 class ApproveRunRequest(BaseModel):
@@ -237,10 +295,22 @@ def build_router() -> APIRouter:
         total = request.app.state.container.reload_skills()
         return SkillMutationResult(total_skills=total)
 
+    @router.post('/v1/research/stream', tags=['research'])
+    async def stream_research(
+        payload: ResearchRequest, request: Request
+    ) -> StreamingResponse:
+        require_system_model(request)
+        return StreamingResponse(
+            research_events(payload, request.app.state.container.research_service),
+            media_type='text/event-stream',
+            headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+        )
+
     @router.post('/v1/research/runs', response_model=RunResult, tags=['research'])
     async def create_research_run(
         payload: ResearchRequest, request: Request
     ) -> RunResult:
+        require_system_model(request)
         service = request.app.state.container.research_service
         if payload.mode == 'plan':
             return await service.run_plan(payload)
@@ -255,6 +325,11 @@ def build_router() -> APIRouter:
     async def approve_research_run(
         run_id: str, payload: ApproveRunRequest, request: Request
     ) -> RunResult:
+        require_system_model(request)
+        pending = request.app.state.container.research_service.get_run(run_id)
+        if pending is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, 'Run not found.')
+        require_run_access(request, pending)
         result: RunResult | None = (
             await request.app.state.container.research_service.approve(
                 run_id, payload.plan
@@ -265,6 +340,7 @@ def build_router() -> APIRouter:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"No pending plan found for run '{run_id}'.",
             )
+        require_run_access(request, result)
         return result
 
     @router.get('/v1/research/runs/{run_id}', response_model=RunResult, tags=['research'])
@@ -277,6 +353,7 @@ def build_router() -> APIRouter:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Run '{run_id}' was not found.",
             )
+        require_run_access(request, result)
         return result
 
     @router.get(
@@ -285,7 +362,12 @@ def build_router() -> APIRouter:
         tags=['research'],
     )
     def get_research_trace(run_id: str, request: Request) -> TraceResponse:
-        trace = request.app.state.container.research_service.get_trace(run_id)
+        service = request.app.state.container.research_service
+        result = service.get_run(run_id)
+        if result is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, 'Run not found.')
+        require_run_access(request, result)
+        trace = service.get_trace(run_id)
         if trace is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

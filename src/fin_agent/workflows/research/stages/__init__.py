@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
+
+from pydantic import BaseModel
 
 from fin_agent.adapters.llm.openai.client import _to_openai_tool
 from fin_agent.adapters.market_data import MarketDataProvider
@@ -42,8 +45,14 @@ class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, ToolFn] = {}
         self._definitions: dict[str, ToolDefinition] = {}
+        self._inputs: dict[str, type[BaseModel]] = {}
 
-    def register(self, name_or_definition: str | ToolDefinition, fn: ToolFn) -> None:
+    def register(
+        self,
+        name_or_definition: str | ToolDefinition,
+        fn: ToolFn,
+        input_model: type[BaseModel] | None = None,
+    ) -> None:
         """Register a tool. Accepts both call shapes:
 
         - ``register("search", handler)`` — legacy form, auto-builds a minimal
@@ -55,11 +64,29 @@ class ToolRegistry:
             definition = ToolDefinition(
                 name=name_or_definition,
                 description=f"Call the {name_or_definition} tool.",
+                input_schema=(
+                    input_model.model_json_schema()
+                    if input_model is not None
+                    else {"type": "object", "properties": {}}
+                ),
             )
         else:
             definition = name_or_definition
+            if input_model is not None:
+                definition = definition.model_copy(
+                    update={"input_schema": input_model.model_json_schema()}
+                )
         self._definitions[definition.name] = definition
         self._tools[definition.name] = fn
+        self._inputs.pop(definition.name, None)
+        if input_model is not None:
+            self._inputs[definition.name] = input_model
+
+    def validate_arguments(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        model = self._inputs.get(name)
+        if model is None:
+            return arguments
+        return model.model_validate(arguments).model_dump(mode="json", exclude_none=True)
 
     def get(self, name: str) -> ToolFn | None:
         return self._tools.get(name)
@@ -68,9 +95,13 @@ class ToolRegistry:
         return sorted(self._tools.keys())
 
     def tool_schemas(self) -> list[dict[str, Any]]:
-        # Unchanged method name / return shape for existing callers.
         return [
-            {"name": d.name, "description": d.description} for d in self.definitions()
+            {
+                "name": d.name,
+                "description": d.description,
+                "parameters": d.input_schema,
+            }
+            for d in self.definitions()
         ]
 
     def definitions(self) -> list[ToolDefinition]:
@@ -92,26 +123,16 @@ class ToolRegistry:
                 logger.warning(
                     "Tool '%s' redefined by source=%s", name, definition.source
                 )
-            self.register(definition, fn)
+            self.register(definition, fn, other._inputs.get(name))
 
 
+@dataclass(kw_only=True, eq=False, repr=False)
 class StageDeps:
-    def __init__(
-        self,
-        *,
-        llm: LLMProvider,
-        search: SearchProvider,
-        market_data: MarketDataProvider,
-        tool_registry: ToolRegistry,
-        config: ResearchWorkflowConfig,
-    ) -> None:
-        self.llm = llm
-        self.search = search
-        self.market_data = market_data
-        # Single catalog source: planner, executor, /v1/skills and future MCP
-        # all read this one registry.
-        self.tool_registry = tool_registry
-        self.config = config
+    llm: LLMProvider
+    search: SearchProvider
+    market_data: MarketDataProvider
+    tool_registry: ToolRegistry
+    config: ResearchWorkflowConfig
 
 
 @runtime_checkable

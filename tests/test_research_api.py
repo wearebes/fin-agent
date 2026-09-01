@@ -21,14 +21,16 @@ from fin_agent.domain.types import (
 
 
 def _mock_llm_chat(*args, **kwargs):
-    plan_json = json.dumps({
-        "search_queries": [{"query": "AAPL test", "max_results": 3}],
-        "market_data": [],
-        "financials": [],
-        "fetch_company_info_tickers": [],
-        "fetch_analyst_data_tickers": [],
-        "fetch_crypto_tickers": [],
-    })
+    plan_json = json.dumps(
+        {
+            "search_queries": [{"query": "AAPL test", "max_results": 3}],
+            "market_data": [],
+            "financials": [],
+            "fetch_company_info_tickers": [],
+            "fetch_analyst_data_tickers": [],
+            "fetch_crypto_tickers": [],
+        }
+    )
     call_count = getattr(_mock_llm_chat, "_count", 0)
     _mock_llm_chat._count = call_count + 1
     if call_count == 0:
@@ -121,10 +123,17 @@ def _mock_market_data_get(ticker, asset_type, **kwargs):
 
 
 def test_research_run_round_trip(monkeypatch) -> None:
-    monkeypatch.setenv('FIN_AGENT__OPENAI__API_KEY', 'sk-test')
-    monkeypatch.setenv('FIN_AGENT__SEARCH__API_KEY', 'search-test')
+    monkeypatch.setenv("FIN_AGENT__OPENAI__API_KEY", "sk-test")
+    monkeypatch.setenv("FIN_AGENT__SEARCH__API_KEY", "search-test")
+    monkeypatch.setenv("FIN_AGENT__PROVIDERS__DEFAULT_SELECTION__SEARCH", "exa")
+    monkeypatch.setenv("FIN_AGENT__DATABASE__BACKEND", "memory")
 
     with (
+        patch("fin_agent.adapters.llm.openai.client.OpenAIClient.chat", side_effect=_mock_llm_chat),
+        patch(
+            "fin_agent.adapters.search.exa.client.ExaSearchClient.search",
+            side_effect=_mock_search_search,
+        ),
         patch("fin_agent.adapters.llm.openai.client.AsyncOpenAI") as mock_openai_cls,
         patch("fin_agent.adapters.search.exa.client.Exa") as mock_exa_cls,
         patch(
@@ -137,33 +146,29 @@ def test_research_run_round_trip(monkeypatch) -> None:
         ),
     ):
         mock_client = AsyncMock()
-        mock_client.chat.completions.create = AsyncMock(
-            side_effect=Exception("mocked")
-        )
+        mock_client.chat.completions.create = AsyncMock(side_effect=Exception("mocked"))
         mock_openai_cls.return_value = mock_client
 
         _mock_llm_chat._count = 0
-        mock_exa_cls.return_value.search.return_value = type(
-            "R", (), {"results": []}
-        )()
+        mock_exa_cls.return_value.search.return_value = type("R", (), {"results": []})()
 
         with TestClient(create_default_app()) as client:
             create_response = client.post(
-                '/v1/research/runs',
-                json={'question': 'Summarize AAPL momentum', 'ticker': 'AAPL'},
+                "/v1/research/runs",
+                json={"question": "Summarize AAPL momentum", "ticker": "AAPL"},
             )
             assert create_response.status_code == 200
             payload = create_response.json()
-            assert payload['run_id']
-            assert payload['status'] == 'completed'
-            assert len(payload['evidence']) >= 0
-            assert len(payload['trace']) >= 1
+            assert payload["run_id"]
+            assert payload["status"] == "completed"
+            assert len(payload["evidence"]) > 0
+            assert payload["report"].startswith("# Test Report")
+            assert client.get(f"/v1/research/runs/{payload['run_id']}").json() == payload
+            assert len(payload["trace"]) >= 1
 
-            trace_response = client.get(
-                f"/v1/research/runs/{payload['run_id']}/trace"
-            )
+            trace_response = client.get(f"/v1/research/runs/{payload['run_id']}/trace")
             assert trace_response.status_code == 200
-            assert trace_response.json()['run_id'] == payload['run_id']
+            assert trace_response.json()["run_id"] == payload["run_id"]
 
 
 def test_plan_mode_returns_awaiting_approval_with_plan(monkeypatch) -> None:
@@ -566,21 +571,42 @@ def test_reload_endpoint_picks_up_handdropped_skill(monkeypatch, tmp_path) -> No
 
 
 def test_research_cli_runs(monkeypatch) -> None:
-    monkeypatch.setenv('FIN_AGENT__OPENAI__API_KEY', 'sk-test')
-    monkeypatch.setenv('FIN_AGENT__SEARCH__API_KEY', 'search-test')
+    monkeypatch.setenv("FIN_AGENT__OPENAI__API_KEY", "sk-test")
+    monkeypatch.setenv("FIN_AGENT__SEARCH__API_KEY", "search-test")
+    monkeypatch.setenv("FIN_AGENT__DATABASE__BACKEND", "memory")
+    monkeypatch.setenv("FIN_AGENT__PROVIDERS__DEFAULT_SELECTION__SEARCH", "exa")
+    _mock_llm_chat._count = 0
 
     with (
+        patch("fin_agent.adapters.llm.openai.client.OpenAIClient.chat", side_effect=_mock_llm_chat),
+        patch(
+            "fin_agent.adapters.search.exa.client.ExaSearchClient.search",
+            side_effect=_mock_search_search,
+        ),
         patch("fin_agent.adapters.llm.openai.client.AsyncOpenAI"),
         patch("fin_agent.adapters.search.exa.client.Exa"),
     ):
         result = CliRunner().invoke(
             cli_app,
-            ['research', 'run', '--question', 'Test question'],
+            ["research", "run", "--question", "Test question"],
         )
         payload = json.loads(result.stdout)
-        assert payload['run_id']
-        assert payload['status'] in ('completed', 'failed')
-        if payload['status'] == 'failed':
-            assert result.exit_code == 1
-        else:
-            assert result.exit_code == 0
+        assert payload["run_id"]
+        assert payload["status"] == "completed"
+        assert result.exit_code == 0
+
+
+def test_api_and_cli_report_empty_model_response_as_failure(monkeypatch):
+    monkeypatch.setenv("FIN_AGENT__OPENAI__API_KEY", "offline-test")
+    monkeypatch.setenv("FIN_AGENT__DATABASE__BACKEND", "memory")
+    empty = LLMResponse(message=LLMMessage(role="assistant", content=""))
+    with patch("fin_agent.adapters.llm.openai.client.OpenAIClient.chat", return_value=empty):
+        with TestClient(create_default_app()) as client:
+            response = client.post("/v1/research/runs", json={"question": "Offline test"})
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["status"] == "failed"
+            assert client.get(f"/v1/research/runs/{payload['run_id']}").json() == payload
+        result = CliRunner().invoke(cli_app, ["research", "run", "--question", "Offline test"])
+        assert result.exit_code == 1
+        assert json.loads(result.stdout)["status"] == "failed"

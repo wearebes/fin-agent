@@ -409,9 +409,12 @@ class TestIntakeStage:
 
 class TestPlanStage:
     @pytest.mark.asyncio
-    async def test_plan_parses_llm_json(self, config: ResearchWorkflowConfig):
+    @pytest.mark.parametrize("fenced", [False, True])
+    async def test_plan_parses_llm_json(self, config: ResearchWorkflowConfig, fenced):
         plan_response = LLMResponse(
-            message=LLMMessage(role="assistant", content=PLAN_JSON)
+            message=LLMMessage(
+                role="assistant", content=f"```json\n{PLAN_JSON}\n```" if fenced else PLAN_JSON
+            )
         )
         ctx = ResearchContext(request=ResearchRequest(question="Analyze AAPL", ticker="AAPL"))
         deps = _make_deps(config, llm_responses=[plan_response])
@@ -644,13 +647,16 @@ class TestSynthesizeStage:
         assert len(result.trace) == 1
 
     @pytest.mark.asyncio
-    async def test_synthesize_handles_llm_failure(self, config: ResearchWorkflowConfig):
+    @pytest.mark.parametrize("lang,expected", [("zh", "报告生成失败"), ("en", "Report generation failed")])
+    async def test_synthesize_handles_llm_failure(
+        self, config: ResearchWorkflowConfig, lang: str, expected: str,
+    ):
         class FailingLLM:
             async def chat(self, *a: Any, **kw: Any) -> LLMResponse:
                 raise RuntimeError("LLM down")
 
         ctx = ResearchContext(
-            request=ResearchRequest(question="test"),
+            request=ResearchRequest(question="test", lang=lang),
             evidence=[EvidenceItem(source="s", summary="e")],
         )
         _search = StubSearch()
@@ -663,7 +669,8 @@ class TestSynthesizeStage:
             config=config,
         )
         result = await synthesize(ctx, deps)
-        assert "failed" in result.report.lower() or "unavailable" in result.report.lower()
+        assert expected in result.report
+        assert result.failed_stages == ["synthesize"]
 
 
 class TestReviewStage:
@@ -689,7 +696,8 @@ class TestReviewStage:
         )
         deps = _make_deps(config, llm_responses=[bad_review])
         result = await review(ctx, deps)
-        assert result.review_passed is True
+        assert result.review_passed is False
+        assert "review" in result.failed_stages
 
 
 class TestPersistStage:

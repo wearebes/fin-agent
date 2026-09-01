@@ -17,6 +17,17 @@ from fin_agent.domain.constants import (
 )
 
 
+class ResearchTurn(BaseModel):
+    question: str = Field(..., min_length=1, max_length=1000)
+    answer: str = Field(..., max_length=4000)
+    ticker: str | None = Field(default=None, max_length=64)
+
+
+class ResearchProgress(BaseModel):
+    stage: str
+    status: Literal["running", "completed", "failed", "skipped"]
+
+
 class ResearchRequest(BaseModel):
     question: str = Field(
         ..., min_length=1, description="Research question to answer."
@@ -47,6 +58,7 @@ class ResearchRequest(BaseModel):
             "via POST /v1/research/runs/{run_id}/approve."
         ),
     )
+    history: list[ResearchTurn] = Field(default_factory=list, max_length=3)
 
 
 class EvidenceItem(BaseModel):

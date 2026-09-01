@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { translate } from '../i18n'
-import type { Lang, RunResult } from '../types'
+import type { Lang, ResearchProgress, ResearchTurn, RunResult } from '../types'
 
 export interface Project {
   id: string
@@ -17,6 +17,7 @@ export interface Session {
   lang: Lang
   createdAt: number
   updatedAt: number
+  draft?: { question: string; ticker: string }
 }
 
 export type MessageRole = 'user' | 'assistant'
@@ -33,20 +34,13 @@ export interface Message {
   selectedSkill?: string | null
   error?: string
   durationMs?: number
+  history?: ResearchTurn[]
+  progress?: ResearchProgress
   createdAt: number
   updatedAt: number
 }
 
-export interface NewMessage {
-  sessionId: string
-  role: MessageRole
-  content: string
-  status: MessageStatus
-  result?: RunResult
-  ticker?: string | null
-  selectedSkill?: string | null
-  error?: string
-}
+export type NewMessage = Omit<Message, 'id' | 'createdAt' | 'updatedAt' | 'durationMs'>
 
 interface WorkspaceState {
   projects: Project[]
@@ -66,6 +60,7 @@ interface WorkspaceState {
   setCurrent: (projectId: string, sessionId: string) => void
   addMessage: (msg: NewMessage) => string
   updateMessage: (id: string, patch: Partial<Omit<Message, 'id'>>) => void
+  updateSession: (id: string, patch: Partial<Pick<Session, 'title' | 'draft'>>) => void
   clearSession: (sessionId: string) => void
   deleteProject: (projectId: string) => void
   deleteSession: (sessionId: string) => void
@@ -120,26 +115,19 @@ export const useWorkspace = create<WorkspaceState>()(
           return
         }
 
-        let projectId = s.currentProjectId
-        if (!projectId || !s.projects.some((p) => p.id === projectId)) {
-          projectId = s.projects[0].id
-        }
+        const projectId = (s.projects.find((p) => p.id === s.currentProjectId) ?? s.projects[0]).id
         const projSessions = s.sessions.filter((se) => se.projectId === projectId)
-        let sessionId = s.currentSessionId
-        if (!sessionId || !projSessions.some((se) => se.id === sessionId)) {
-          if (projSessions.length > 0) {
-            sessionId = projSessions[0].id
-          } else {
-            const session = makeSession(
-              projectId,
-              translate(s.lang, 'defaultSessionTitle'),
-              s.lang,
-            )
-            set((state) => ({ sessions: [...state.sessions, session] }))
-            sessionId = session.id
-          }
-        }
-        set({ currentProjectId: projectId, currentSessionId: sessionId })
+        const existing = projSessions.find((se) => se.id === s.currentSessionId) ?? projSessions[0]
+        const session = existing ?? makeSession(
+          projectId,
+          translate(s.lang, 'defaultSessionTitle'),
+          s.lang,
+        )
+        set({
+          sessions: existing ? s.sessions : [...s.sessions, session],
+          currentProjectId: projectId,
+          currentSessionId: session.id,
+        })
       },
 
       createProject: () => {
@@ -183,24 +171,19 @@ export const useWorkspace = create<WorkspaceState>()(
 
       selectProject: (projectId) => {
         const s = get()
-        const projSessions = s.sessions
+        const existing = s.sessions
           .filter((se) => se.projectId === projectId)
-          .sort((a, b) => b.updatedAt - a.updatedAt)
-        if (projSessions.length > 0) {
-          const sessionId = projSessions[0].id
-          set({ currentProjectId: projectId, currentSessionId: sessionId })
-          return sessionId
-        }
-        const session = makeSession(
+          .sort((a, b) => b.updatedAt - a.updatedAt)[0]
+        const session = existing ?? makeSession(
           projectId,
           translate(s.lang, 'defaultSessionTitle'),
           s.lang,
         )
-        set((state) => ({
-          sessions: [...state.sessions, session],
+        set({
+          sessions: existing ? s.sessions : [...s.sessions, session],
           currentProjectId: projectId,
           currentSessionId: session.id,
-        }))
+        })
         return session.id
       },
 
@@ -225,10 +208,16 @@ export const useWorkspace = create<WorkspaceState>()(
       addMessage: (msg) => {
         const now = Date.now()
         const message: Message = { id: uid(), createdAt: now, updatedAt: now, ...msg }
+        const firstQuestion = msg.role === 'user' && !get().messages.some(
+          (item) => item.sessionId === msg.sessionId && item.role === 'user',
+        )
         set((state) => ({
           messages: [...state.messages, message],
           sessions: state.sessions.map((se) =>
-            se.id === msg.sessionId ? { ...se, updatedAt: now } : se,
+            se.id === msg.sessionId ? {
+              ...se, updatedAt: now,
+              title: firstQuestion ? msg.content.replace(/\s+/g, ' ').trim().slice(0, 48) : se.title,
+            } : se,
           ),
         }))
         return message.id
@@ -248,21 +237,27 @@ export const useWorkspace = create<WorkspaceState>()(
         }))
       },
 
+      updateSession: (id, patch) => set((state) => ({
+        sessions: state.sessions.map((session) =>
+          session.id === id ? { ...session, ...patch } : session,
+        ),
+      })),
+
       deleteProject: (projectId) => {
         const s = get()
-        const sessionIds = s.sessions
-          .filter((se) => se.projectId === projectId)
-          .map((se) => se.id)
+        const sessionIds = new Set(
+          s.sessions.filter((se) => se.projectId === projectId).map((se) => se.id),
+        )
         set((state) => ({
           projects: state.projects.filter((p) => p.id !== projectId),
           sessions: state.sessions.filter((se) => se.projectId !== projectId),
-          messages: state.messages.filter((m) => !sessionIds.includes(m.sessionId)),
+          messages: state.messages.filter((m) => !sessionIds.has(m.sessionId)),
           currentProjectId:
             state.currentProjectId === projectId
               ? state.projects.find((p) => p.id !== projectId)?.id ?? null
               : state.currentProjectId,
           currentSessionId:
-            sessionIds.includes(state.currentSessionId ?? '')
+            sessionIds.has(state.currentSessionId ?? '')
               ? null
               : state.currentSessionId,
         }))
@@ -305,25 +300,14 @@ export const useWorkspace = create<WorkspaceState>()(
         showThinking: state.showThinking,
         planMode: state.planMode,
       }),
-      // On reload there is no in-flight fetch backing a persisted "running"
-      // optimistic bubble, so it would otherwise hang forever and keep the
-      // composer disabled. Demote any such stale message to a recoverable
-      // failed state.
+      // A reload cancels requests; stale running messages must not lock the composer.
       onRehydrateStorage: () => (state) => {
         if (!state) return
-        let changed = false
-        const messages = state.messages.map((m) => {
-          if (m.role === 'assistant' && m.status === 'running') {
-            changed = true
-            return {
-              ...m,
-              status: 'failed' as MessageStatus,
-              error: '请求被刷新中断，请重试。 / Request was interrupted by a reload — please retry.',
-            }
-          }
-          return m
-        })
-        if (changed) state.messages = messages
+        for (const message of state.messages) {
+          if (message.role !== 'assistant' || message.status !== 'running') continue
+          message.status = 'failed'
+          message.error = '请求被刷新中断，请重试。 / Request was interrupted by a reload — please retry.'
+        }
       },
     },
   ),

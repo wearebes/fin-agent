@@ -10,7 +10,7 @@ class ResearchWorkflowConfig(BaseModel):
     max_iterations: int = Field(
         default=20,
         ge=1,
-        description="Maximum workflow iterations before the run is terminated.",
+        description="Maximum model decisions in the tool stage, including rejected calls.",
     )
     evidence_limit: int = Field(
         default=50,

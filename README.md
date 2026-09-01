@@ -1,5 +1,11 @@
 # fin-agent
 
+2026-09-01：修复长报告超时及新证据未进入提示的问题，原腾讯任务已用真实 Codex 续写并通过模型审查。见 [修复与验证记录](docs/research-timeout-fix-20260901.md)。
+
+2026-08-31 模型接入更新：保留国内外个人 API，新增仅指定本机账户可用的 Codex 连接；商业模式禁用个人 Codex 和公共系统模型。真实调用记录、独立启动方式与尚未完成的商业化要求见 [模型接入与商业化边界](docs/local-codex-commercial-20260831.md)。
+
+2026-08-31 工程改良已完成：财务证据保留、工具参数校验与循环预算、明确失败状态、证据辅助审查及离线测试。改动、开源参考、验证结果和能力边界见 [本轮工程报告](docs/engineering-iteration-20260831.md)。
+
 `fin-agent` 是一个面向金融研究代理的 Python scaffold，已经具备统一配置加载、组合根装配、CLI/API/静态页面入口、可执行 research workflow，以及可切换的内存/SQLite 运行结果存储。
 
 ## 当前真实能力边界
@@ -14,18 +20,18 @@
     - `POST /v1/research/runs`
     - `GET /v1/research/runs/{id}`
     - `GET /v1/research/runs/{id}/trace`
-  - 根路径 `/` 已挂载一个静态单页页面（`static/index.html`）
-  - OpenAI LLM 调用（plan / tool-exec / synthesize / review）
+  - 根路径 `/` 优先提供 React 构建产物，缺少构建时回退到 `static/index.html`
+  - 研究阶段共用所选 LLM：系统模型、登录用户自己的兼容 API，或指定本机账户的 Codex
+  - 基础登录、个人模型配置与研究记录所属账户校验；SSE 研究进度推送
   - 搜索 adapter：Exa、Tavily
   - 市场数据 adapter：YFinance、AKShare、FMP，并通过 `MarketDataRouter` 做路由/合并
   - 运行结果存储：
     - `InMemoryRunStore`
     - `SQLAlchemyRunStore`，可切到 SQLite 或其他 SQLAlchemy URL
 - 还没有闭环的能力：
-  - API 认证、限流、租户隔离
-  - Streaming / SSE 实时进度推送
+  - 全面的限流、客户准入与租户隔离（尤其共享浏览器历史、多进程密钥存储）
   - 后台 Job Queue；当前 `POST /v1/research/runs` 仍是阻塞式
-  - 机器可读的 tool schema / function-calling 契约
+  - 供应商原生 function calling（当前已有 JSON Schema 参数校验，沿用文本 tool_call 协议）
   - review 失败后的自动重试 / 条件分支
   - 长期记忆、向量检索、历史 run 复用
 
@@ -189,16 +195,16 @@ pytest
 
 1. provider 抽象还没有完全闭环
    - 配置层已经有 `providers.default_selection`
-   - 但 `container.py` 里 LLM 仍直接写死 `OpenAIClient`
+   - 系统模型仍用 `OpenAIClient`；个人接口和本机 Codex 通过请求级客户端进入同一工作流
    - `market_data` 的 provider 选择也不是严格按配置切换，而是 `MarketDataRouter` 内部自己做硬编码 fallback 顺序
 
-2. workflow 的失败语义比较脆弱
-   - `execute_workflow()` 捕获 stage 异常后，只是在 `trace` 里追加 `"Stage failed with error"`
-   - `ResearchService` 再通过 `trace.detail` 里是否包含 `"failed"` 来判断 run 是否失败
-   - 这种状态判断依赖自由文本，不够稳，后续一加重试/分支就容易失控
+2. workflow 已有明确失败语义，但还没有自动修订闭环
+   - `ResearchContext.failed_stages` 记录失败，服务层不再解析 trace 文本决定状态
+   - 空报告、审查异常或审查拒绝都会标记失败，并保留现有报告/证据供排查
+   - 审查失败后的重写、重检索和后台重试仍未实现
 
 3. `persist` stage 和真实持久化职责不一致
-   - workflow 里的 `persist` 目前只追加 trace
+   - workflow 里的 `persist` 只记录“准备存储”的 trace，不再提前宣称保存成功
    - 真正的 `RunStore.save()` 发生在 `ResearchService.run()` 末尾
    - 这会让“stage 语义”和“实际副作用位置”分离，后面接异步任务或审计日志时容易混乱
 
@@ -208,10 +214,10 @@ pytest
    - 也没有把真实 retrieval plan 暴露出来
    - 这意味着 API/CLI 能看到的是“结果摘要”，不是一次 run 的完整可审计交付物
 
-5. async 外壳和 sync I/O 混在一起
-   - API / service / workflow 都是 async
-   - 但搜索和行情 adapter 大多还是同步调用
-   - 当前量级下能跑，但一旦并发上来，`POST /v1/research/runs` 会阻塞事件循环，前端也无法拿到真实的 running 进度
+5. 已有 SSE 实时进度，但尚无持久化后台任务队列
+   - 搜索与行情 adapter 保持原同步接口，由 workflow/tool 层通过 `asyncio.to_thread` 卸载
+   - 同一次研究内仍顺序取数；流断开会取消异步任务，已经运行的同步数据请求可能仍需结束
+   - 数据库保存仍为同步操作，后续并发优化需单独设计和验证
 
 6. 文档和配置口径还在漂移
    - `README`、`.env.example`、`configs/base.yaml` 之前已经出现不一致

@@ -14,6 +14,7 @@ from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
+from fin_agent.adapters.llm.codex import CodexConfig
 from fin_agent.adapters.llm.openai.config import OpenAIConfig
 from fin_agent.adapters.market_data.akshare.config import AKShareConfig
 from fin_agent.adapters.market_data.fmp.config import FMPConfig
@@ -65,6 +66,19 @@ class DatabaseConfig(BaseModel):
 
 
 class RuntimeConfig(BaseModel):
+    commercial_mode: bool = False
+    allow_system_model: bool = True
+    cors_origins: list[str] = Field(default_factory=lambda: [
+        "http://localhost:5173", "http://127.0.0.1:5173",
+    ])
+    llm_allowed_hosts: list[str] = Field(
+        default_factory=lambda: [
+            "api.openai.com", "api.deepseek.com", "open.bigmodel.cn", "dashscope.aliyuncs.com",
+            "dashscope-intl.aliyuncs.com", "dashscope-us.aliyuncs.com", "api.moonshot.cn",
+            "ark.cn-beijing.volces.com", "generativelanguage.googleapis.com", "api.anthropic.com",
+        ],
+        description="Trusted HTTPS hosts for user-provided LLM keys; exact names, no wildcards.",
+    )
     request_timeout_seconds: int = Field(
         default=30,
         ge=1,
@@ -211,6 +225,8 @@ class AppSettings(BaseSettings):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
+    codex: CodexConfig = Field(default_factory=CodexConfig)
+    proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     workflows: WorkflowsConfig = Field(default_factory=WorkflowsConfig)
     feature_flags: FeatureFlagsConfig = Field(default_factory=FeatureFlagsConfig)
@@ -223,7 +239,7 @@ class AppSettings(BaseSettings):
     tavily: TavilySearchConfig = Field(default_factory=TavilySearchConfig)
     research_workflow: ResearchWorkflowConfig = Field(default_factory=ResearchWorkflowConfig)
 
-    _source_files: tuple[Path, Path] = PrivateAttr(default_factory=tuple)
+    _source_files: tuple[Path, ...] = PrivateAttr(default=())
 
     @classmethod
     def settings_customise_sources(
@@ -243,7 +259,7 @@ class AppSettings(BaseSettings):
         )
 
     @property
-    def source_files(self) -> tuple[Path, Path]:
+    def source_files(self) -> tuple[Path, ...]:
         return self._source_files
 
 
@@ -327,9 +343,24 @@ def collect_runtime_validation_errors(settings: AppSettings) -> list[str]:
     if settings.runtime.validate_runtime_secrets:
         if (
             settings.providers.default_selection.llm == LLMProviderName.OPENAI
+            and settings.runtime.allow_system_model
+            and not settings.runtime.commercial_mode
             and not _secret_is_set(settings.openai.api_key)
         ):
             errors.append('FIN_AGENT__OPENAI__API_KEY is required for the default OpenAI provider.')
     if not settings.database.url.strip():
         errors.append('database.url must not be empty.')
+    if settings.codex.enabled and not settings.codex.owner_user_id:
+        errors.append('codex.owner_user_id is required before enabling local Codex.')
+    if settings.codex.enabled and len(settings.auth.secret_key.get_secret_value()) < 32:
+        errors.append('Local Codex requires an independent JWT secret of at least 32 characters.')
+    if settings.runtime.commercial_mode:
+        if settings.codex.enabled:
+            errors.append('Commercial mode must not enable the local Codex account.')
+        if len(settings.auth.secret_key.get_secret_value()) < 32:
+            errors.append('Commercial mode requires a JWT secret of at least 32 characters.')
+        if settings.database.backend != 'sql':
+            errors.append('Commercial mode requires persistent SQL account storage.')
+        if '*' in settings.runtime.cors_origins:
+            errors.append('Commercial mode requires explicit CORS origins.')
     return errors

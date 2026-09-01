@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from fin_agent.domain.constants import EnvironmentName, RunStatus
@@ -13,6 +11,7 @@ from fin_agent.domain.types import (
 )
 from fin_agent.storage.db_store import SQLAlchemyRunStore
 from fin_agent.storage.run_store import InMemoryRunStore
+from fin_agent.storage.user_store import InMemoryUserStore
 
 
 def _make_run(run_id: str = "test-run-001", **overrides) -> RunResult:
@@ -182,6 +181,7 @@ class TestContainerStoreSelection:
         settings = load_settings("test")
         container = build_container(settings)
         assert isinstance(container.run_store, InMemoryRunStore)
+        assert isinstance(container.user_store, InMemoryUserStore)
 
     def test_sql_backend(self, monkeypatch, tmp_path):
         monkeypatch.setenv("FIN_AGENT__OPENAI__API_KEY", "sk-test")
@@ -198,3 +198,28 @@ class TestContainerStoreSelection:
         settings = load_settings("test")
         container = build_container(settings)
         assert isinstance(container.run_store, SQLAlchemyRunStore)
+
+    @pytest.mark.parametrize("url", ["sqlite:///:memory:", "sqlite:///./nested/test.db"])
+    def test_both_sql_stores_are_initialized(self, monkeypatch, tmp_path, url):
+        from fin_agent.bootstrap.container import _build_stores
+        from fin_agent.bootstrap.settings import load_settings
+
+        monkeypatch.chdir(tmp_path)
+        settings = load_settings("test")
+        settings.database.backend = "sql"
+        settings.database.url = url
+        runs, users = _build_stores(settings)
+        try:
+            runs.save(_make_run())
+            assert runs.get("test-run-001").report == _make_run().report
+            user = users.create_user("testuser", "test@example.com", "test-hash", "Test")
+            assert users.get_by_id(user.id).username == "testuser"
+            assert users.get_hashed_password(user.id) == "test-hash"
+            assert users.update_profile(user.id, display_name="Updated").display_name == "Updated"
+            assert users.update_password(user.id, "changed-hash")
+            assert users.get_hashed_password(user.id) == "changed-hash"
+            if ":memory:" not in url:
+                assert (tmp_path / "nested/test.db").exists()
+        finally:
+            runs.engine.dispose()
+            users.engine.dispose()

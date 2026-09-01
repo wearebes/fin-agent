@@ -9,6 +9,7 @@ import RegisterPage from './components/user/RegisterPage'
 import ProfilePage from './components/user/ProfilePage'
 import PasswordPage from './components/user/PasswordPage'
 import SkillsPage from './components/user/SkillsPage'
+import ModelSettingsPage from './components/user/ModelSettingsPage'
 import { useWorkspace } from './store/workspace'
 
 export default function App() {
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="profile" element={<ProfilePage />} />
           <Route path="password" element={<PasswordPage />} />
           <Route path="skills" element={<SkillsPage />} />
+          <Route path="models" element={<ModelSettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/chat" replace />} />
       </Routes>

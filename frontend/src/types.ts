@@ -10,6 +10,17 @@ export type Lang = 'zh' | 'en'
 // behavior end to end.
 export type ResearchMode = 'auto' | 'plan'
 
+export interface ResearchTurn {
+  question: string
+  answer: string
+  ticker: string | null
+}
+
+export interface ResearchProgress {
+  stage: string
+  status: 'running' | 'completed' | 'failed' | 'skipped'
+}
+
 export interface ResearchRequest {
   question: string
   ticker: string | null
@@ -23,6 +34,7 @@ export interface ResearchRequest {
   // parsed from `question` server-side; `null` means "no skill selected".
   selected_skill: string | null
   mode: ResearchMode
+  history?: ResearchTurn[]
 }
 
 export interface EvidenceItem {

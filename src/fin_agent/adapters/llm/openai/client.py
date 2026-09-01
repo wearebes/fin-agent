@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, Literal
 
+import httpx
 from openai import AsyncOpenAI
 
 from fin_agent.adapters.llm.openai.config import OpenAIConfig
@@ -102,12 +103,20 @@ def _to_openai_tool(tool: ToolDefinition) -> dict[str, Any]:
 
 
 class OpenAIClient:
-    def __init__(self, config: OpenAIConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: OpenAIConfig | None = None,
+        *,
+        http_client: httpx.AsyncClient | None = None,
+        max_retries: int | None = None,
+        send_temperature: bool = True,
+        token_parameter: Literal["max_tokens", "max_completion_tokens"] = "max_tokens",
+    ) -> None:
         self._config = config or OpenAIConfig()
+        self._send_temperature = send_temperature
+        self._token_parameter = token_parameter
         api_key = (
-            self._config.api_key.get_secret_value()
-            if self._config.api_key is not None
-            else None
+            self._config.api_key.get_secret_value() if self._config.api_key is not None else None
         )
         kwargs: dict[str, Any] = {
             "api_key": api_key,
@@ -115,7 +124,24 @@ class OpenAIClient:
         }
         if self._config.base_url is not None:
             kwargs["base_url"] = self._config.base_url
+        if http_client is not None:
+            kwargs["http_client"] = http_client
+        if max_retries is not None:
+            kwargs["max_retries"] = max_retries
         self._client = AsyncOpenAI(**kwargs)
+
+    async def close(self) -> None:
+        await self._client.close()
+
+    async def check_connection(self) -> None:
+        kwargs: dict[str, Any] = {
+            "model": self._config.model,
+            "messages": [{"role": "user", "content": "Reply OK."}],
+            self._token_parameter: 128,
+        }
+        response = await self._client.chat.completions.create(**kwargs)
+        if not response.choices or not (response.choices[0].message.content or "").strip():
+            raise ValueError("Invalid Chat Completions response.")
 
     async def chat(
         self,
@@ -136,12 +162,12 @@ class OpenAIClient:
                 "model": self._config.model,
                 "messages": openai_messages,
             }
-            if temperature is not None:
-                create_kwargs["temperature"] = temperature
-            else:
-                create_kwargs["temperature"] = self._config.temperature
+            if self._send_temperature:
+                create_kwargs["temperature"] = (
+                    temperature if temperature is not None else self._config.temperature
+                )
             if max_tokens is not None:
-                create_kwargs["max_tokens"] = max_tokens
+                create_kwargs[self._token_parameter] = max_tokens
             if tools:
                 create_kwargs["tools"] = [_to_openai_tool(t) for t in tools]
                 if tool_choice is not None:
@@ -156,9 +182,7 @@ class OpenAIClient:
             choice = response.choices[0]
             message = _from_openai_message(choice.message)
             usage_prompt = response.usage.prompt_tokens if response.usage else None
-            usage_completion = (
-                response.usage.completion_tokens if response.usage else None
-            )
+            usage_completion = response.usage.completion_tokens if response.usage else None
 
             return LLMResponse(
                 message=message,
@@ -167,6 +191,7 @@ class OpenAIClient:
                 usage_completion_tokens=usage_completion,
                 finish_reason=choice.finish_reason,
             )
-        except Exception:
-            logger.exception("chat failed for model=%s", self._config.model)
+        except Exception as exc:
+            # Provider error bodies can echo credentials; never log their raw contents.
+            logger.warning("LLM request failed: %s", type(exc).__name__)
             return empty
