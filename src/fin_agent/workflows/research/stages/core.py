@@ -7,7 +7,6 @@ from uuid import uuid4
 
 from fin_agent.domain.types import (
     EvidenceItem,
-    FinancialsPlanItem,
     LLMMessage,
     MarketDataPlanItem,
     RetrievalPlan,
@@ -29,13 +28,13 @@ You are a research planning assistant for financial analysis.
 Given a research question and optional ticker, produce a JSON retrieval plan.
 
 The JSON must have exactly these keys:
-- "search_queries": list of {"query": str, "max_results": int}
-- "market_data": list of {"ticker": str, \
+- "search_queries": list of {{"query": str, "max_results": int}}
+- "market_data": list of {{"ticker": str, \
 "asset_type": "stock|etf|crypto|index|forex|bond|commodity", \
-"frequency": "daily|weekly|monthly", "period": str}
-- "financials": list of {"ticker": str, \
+"frequency": "daily|weekly|monthly", "period": str}}
+- "financials": list of {{"ticker": str, \
 "statement_type": "income_statement|balance_sheet|cash_flow", \
-"frequency": "yearly|quarterly"}
+"frequency": "yearly|quarterly"}}
 - "fetch_company_info_tickers": list of ticker strings
 - "fetch_analyst_data_tickers": list of ticker strings
 - "fetch_crypto_tickers": list of crypto ticker strings (e.g. BTC-USD)
@@ -78,9 +77,7 @@ async def plan(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
 
     lang_instruction = get_lang_instruction(ctx.request.lang)
     tool_catalog = _render_tool_catalog(deps)
-    system_content = (
-        PLAN_SYSTEM_PROMPT.format(tool_catalog=tool_catalog) + "\n" + lang_instruction
-    )
+    system_content = PLAN_SYSTEM_PROMPT.format(tool_catalog=tool_catalog) + "\n" + lang_instruction
     if ctx.skill_instructions:
         system_content = ctx.skill_instructions + "\n\n" + system_content
 

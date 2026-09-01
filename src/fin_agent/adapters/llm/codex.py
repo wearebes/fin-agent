@@ -17,7 +17,7 @@ from urllib.request import getproxies
 
 from pydantic import BaseModel, Field
 
-from fin_agent.domain.types import LLMMessage, LLMResponse
+from fin_agent.domain.types import LLMMessage, LLMResponse, ToolDefinition
 
 
 class CodexConfig(BaseModel):
@@ -170,6 +170,8 @@ class CodexSession:
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        tools: list[ToolDefinition] | None = None,
+        tool_choice: str | None = None,
     ) -> LLMResponse:
         if not self._directory:
             raise CodexError("Codex session has not started.")

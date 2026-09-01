@@ -37,9 +37,7 @@ class FMPClient:
     def __init__(self, config: FMPConfig | None = None) -> None:
         self._config = config or FMPConfig()
         self._api_key = (
-            self._config.api_key.get_secret_value()
-            if self._config.api_key is not None
-            else None
+            self._config.api_key.get_secret_value() if self._config.api_key is not None else None
         )
         if not self._api_key:
             logger.debug("FMPClient: no API key configured, skipping FMP (optional data source)")
@@ -93,7 +91,9 @@ class FMPClient:
                     volume=int(item.get("volume", 0) or 0),
                 )
             )
-        return MarketDataResponse(ticker=ticker, asset_type=asset_type, frequency=frequency, data=points)
+        return MarketDataResponse(
+            ticker=ticker, asset_type=asset_type, frequency=frequency, data=points
+        )
 
     def _crypto_history(
         self, ticker: str, start: date, end: date, empty: MarketDataResponse
@@ -119,7 +119,9 @@ class FMPClient:
                     volume=int(item.get("volume", 0) or 0),
                 )
             )
-        return MarketDataResponse(ticker=ticker, asset_type=AssetType.CRYPTO, frequency=empty.frequency, data=points)
+        return MarketDataResponse(
+            ticker=ticker, asset_type=AssetType.CRYPTO, frequency=empty.frequency, data=points
+        )
 
     def get_financials(
         self,
@@ -232,9 +234,7 @@ def _parse_date(date_str: Any) -> date | None:
         return None
 
 
-def _fiscal_year_quarter(
-    date_str: Any, quarterly: bool
-) -> tuple[int | None, int | None]:
+def _fiscal_year_quarter(date_str: Any, quarterly: bool) -> tuple[int | None, int | None]:
     d = _parse_date(date_str)
     if d is None:
         return None, None

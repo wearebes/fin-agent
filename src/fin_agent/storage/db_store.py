@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Sequence
 
 from sqlalchemy import create_engine
@@ -16,6 +17,8 @@ from fin_agent.domain.types import (
     TraceRecord,
 )
 from fin_agent.storage.models import Base, RunRow, TraceRecordRow
+
+logger = logging.getLogger(__name__)
 
 
 def _row_to_result(row: RunRow) -> RunResult:
@@ -43,9 +46,7 @@ def _result_to_row(result: RunResult) -> RunRow:
         planned_stages_json=json.dumps(result.planned_stages),
         report=result.report,
         plan_json=result.plan.model_dump_json() if result.plan else None,
-        evidence_json=json.dumps(
-            [e.model_dump(mode="json") for e in result.evidence]
-        ),
+        evidence_json=json.dumps([e.model_dump(mode="json") for e in result.evidence]),
         trace_records=[
             TraceRecordRow(stage=t.stage, detail=t.detail, seq=i)
             for i, t in enumerate(result.trace)
@@ -87,9 +88,7 @@ class SQLAlchemyRunStore:
         with Session(self._engine) as session:
             row = session.get(RunRow, run_id)
             if row is None:
-                logger.warning(
-                    "save_context: no run row for run_id=%s, skipping", run_id
-                )
+                logger.warning("save_context: no run row for run_id=%s, skipping", run_id)
                 return
             row.context_json = context_json
             session.commit()

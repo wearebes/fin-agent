@@ -11,6 +11,9 @@ from fin_agent.bootstrap.app import create_default_app
 from fin_agent.bootstrap.cli import app as cli_app
 from fin_agent.domain.constants import AssetType
 from fin_agent.domain.types import (
+    AnalystResponse,
+    CompanyInfo,
+    FinancialStatementResponse,
     LLMMessage,
     LLMResponse,
     MarketDataPoint,
@@ -36,7 +39,9 @@ def _mock_llm_chat(*args, **kwargs):
     if call_count == 0:
         return LLMResponse(message=LLMMessage(role="assistant", content=plan_json))
     if call_count == 1:
-        return LLMResponse(message=LLMMessage(role="assistant", content="Sufficient evidence gathered."))
+        return LLMResponse(
+            message=LLMMessage(role="assistant", content="Sufficient evidence gathered.")
+        )
     if call_count == 2:
         return LLMResponse(
             message=LLMMessage(role="assistant", content="# Test Report\nSynthesis.")
@@ -50,24 +55,28 @@ _mock_llm_chat._count = 0
 
 
 def _mock_llm_chat_with_tickers(*args, **kwargs):
-    plan_json = json.dumps({
-        "search_queries": [{"query": "AAPL test", "max_results": 3}],
-        "market_data": [
-            {"ticker": "AAPL", "asset_type": "stock", "frequency": "daily", "period": "1y"}
-        ],
-        "financials": [
-            {"ticker": "AAPL", "statement_type": "income_statement", "frequency": "yearly"}
-        ],
-        "fetch_company_info_tickers": ["AAPL"],
-        "fetch_analyst_data_tickers": ["AAPL"],
-        "fetch_crypto_tickers": [],
-    })
+    plan_json = json.dumps(
+        {
+            "search_queries": [{"query": "AAPL test", "max_results": 3}],
+            "market_data": [
+                {"ticker": "AAPL", "asset_type": "stock", "frequency": "daily", "period": "1y"}
+            ],
+            "financials": [
+                {"ticker": "AAPL", "statement_type": "income_statement", "frequency": "yearly"}
+            ],
+            "fetch_company_info_tickers": ["AAPL"],
+            "fetch_analyst_data_tickers": ["AAPL"],
+            "fetch_crypto_tickers": [],
+        }
+    )
     call_count = getattr(_mock_llm_chat_with_tickers, "_count", 0)
     _mock_llm_chat_with_tickers._count = call_count + 1
     if call_count == 0:
         return LLMResponse(message=LLMMessage(role="assistant", content=plan_json))
     if call_count == 1:
-        return LLMResponse(message=LLMMessage(role="assistant", content="Sufficient evidence gathered."))
+        return LLMResponse(
+            message=LLMMessage(role="assistant", content="Sufficient evidence gathered.")
+        )
     if call_count == 2:
         return LLMResponse(
             message=LLMMessage(role="assistant", content="# Test Report\nSynthesis.")
@@ -122,6 +131,22 @@ def _mock_market_data_get(ticker, asset_type, **kwargs):
     )
 
 
+def _mock_financials_get(ticker, statement_type, **kwargs):
+    return FinancialStatementResponse(
+        ticker=ticker,
+        statement_type=statement_type,
+        data=[],
+    )
+
+
+def _mock_company_info_get(ticker):
+    return CompanyInfo(ticker=ticker)
+
+
+def _mock_analyst_get(ticker):
+    return AnalystResponse(ticker=ticker)
+
+
 def test_research_run_round_trip(monkeypatch) -> None:
     monkeypatch.setenv("FIN_AGENT__OPENAI__API_KEY", "sk-test")
     monkeypatch.setenv("FIN_AGENT__SEARCH__API_KEY", "search-test")
@@ -143,6 +168,18 @@ def test_research_run_round_trip(monkeypatch) -> None:
         patch(
             "fin_agent.adapters.market_data.akshare.client.AKShareClient.get_market_data",
             side_effect=_mock_market_data_get,
+        ),
+        patch(
+            "fin_agent.adapters.market_data.yfinance.client.YFinanceClient.get_financials",
+            side_effect=_mock_financials_get,
+        ),
+        patch(
+            "fin_agent.adapters.market_data.yfinance.client.YFinanceClient.get_company_info",
+            side_effect=_mock_company_info_get,
+        ),
+        patch(
+            "fin_agent.adapters.market_data.yfinance.client.YFinanceClient.get_analyst_data",
+            side_effect=_mock_analyst_get,
         ),
     ):
         mock_client = AsyncMock()
@@ -172,8 +209,8 @@ def test_research_run_round_trip(monkeypatch) -> None:
 
 
 def test_plan_mode_returns_awaiting_approval_with_plan(monkeypatch) -> None:
-    monkeypatch.setenv('FIN_AGENT__OPENAI__API_KEY', 'sk-test')
-    monkeypatch.setenv('FIN_AGENT__SEARCH__API_KEY', 'search-test')
+    monkeypatch.setenv("FIN_AGENT__OPENAI__API_KEY", "sk-test")
+    monkeypatch.setenv("FIN_AGENT__SEARCH__API_KEY", "search-test")
 
     with (
         patch("fin_agent.adapters.llm.openai.client.AsyncOpenAI") as mock_openai_cls,
@@ -186,39 +223,49 @@ def test_plan_mode_returns_awaiting_approval_with_plan(monkeypatch) -> None:
             "fin_agent.adapters.market_data.akshare.client.AKShareClient.get_market_data",
             side_effect=_mock_market_data_get,
         ),
+        patch(
+            "fin_agent.adapters.market_data.yfinance.client.YFinanceClient.get_company_info",
+            side_effect=_mock_company_info_get,
+        ),
+        patch(
+            "fin_agent.adapters.market_data.yfinance.client.YFinanceClient.get_analyst_data",
+            side_effect=_mock_analyst_get,
+        ),
     ):
         mock_client = AsyncMock()
-        mock_client.chat.completions.create = AsyncMock(
-            side_effect=Exception("mocked")
-        )
+        mock_client.chat.completions.create = AsyncMock(side_effect=Exception("mocked"))
         mock_openai_cls.return_value = mock_client
 
         _mock_llm_chat._count = 0
-        mock_exa_cls.return_value.search.return_value = type(
-            "R", (), {"results": []}
-        )()
+        mock_exa_cls.return_value.search.return_value = type("R", (), {"results": []})()
 
         with TestClient(create_default_app()) as client:
             create_response = client.post(
-                '/v1/research/runs',
-                json={'question': 'Summarize AAPL momentum', 'ticker': 'AAPL', 'mode': 'plan'},
+                "/v1/research/runs",
+                json={"question": "Summarize AAPL momentum", "ticker": "AAPL", "mode": "plan"},
             )
             assert create_response.status_code == 200
             payload = create_response.json()
-            assert payload['run_id']
-            assert payload['status'] == 'awaiting_approval'
-            assert payload['report'] == ''
-            assert payload['evidence'] == []
-            assert payload['plan'] is not None
-            assert len(payload['plan']['search_queries']) >= 1
-            assert payload['planned_stages'] == [
-                "intake", "plan", "retrieve", "tool-exec", "synthesize", "review", "persist",
+            assert payload["run_id"]
+            assert payload["status"] == "awaiting_approval"
+            assert payload["report"] == ""
+            assert payload["evidence"] == []
+            assert payload["plan"] is not None
+            assert len(payload["plan"]["search_queries"]) >= 1
+            assert payload["planned_stages"] == [
+                "intake",
+                "plan",
+                "retrieve",
+                "tool-exec",
+                "synthesize",
+                "review",
+                "persist",
             ]
 
 
 def test_approve_resumes_and_returns_final_report(monkeypatch) -> None:
-    monkeypatch.setenv('FIN_AGENT__OPENAI__API_KEY', 'sk-test')
-    monkeypatch.setenv('FIN_AGENT__SEARCH__API_KEY', 'search-test')
+    monkeypatch.setenv("FIN_AGENT__OPENAI__API_KEY", "sk-test")
+    monkeypatch.setenv("FIN_AGENT__SEARCH__API_KEY", "search-test")
 
     with (
         patch("fin_agent.adapters.search.exa.client.Exa") as mock_exa_cls,
@@ -231,41 +278,51 @@ def test_approve_resumes_and_returns_final_report(monkeypatch) -> None:
             "fin_agent.adapters.market_data.akshare.client.AKShareClient.get_market_data",
             side_effect=_mock_market_data_get,
         ),
+        patch(
+            "fin_agent.adapters.market_data.yfinance.client.YFinanceClient.get_financials",
+            side_effect=_mock_financials_get,
+        ),
+        patch(
+            "fin_agent.adapters.market_data.yfinance.client.YFinanceClient.get_company_info",
+            side_effect=_mock_company_info_get,
+        ),
+        patch(
+            "fin_agent.adapters.market_data.yfinance.client.YFinanceClient.get_analyst_data",
+            side_effect=_mock_analyst_get,
+        ),
     ):
         _mock_llm_chat_with_tickers._count = 0
-        mock_exa_cls.return_value.search.return_value = type(
-            "R", (), {"results": []}
-        )()
+        mock_exa_cls.return_value.search.return_value = type("R", (), {"results": []})()
 
         with TestClient(create_default_app()) as client:
             plan_response = client.post(
-                '/v1/research/runs',
-                json={'question': 'Summarize AAPL momentum', 'ticker': 'AAPL', 'mode': 'plan'},
+                "/v1/research/runs",
+                json={"question": "Summarize AAPL momentum", "ticker": "AAPL", "mode": "plan"},
             )
             assert plan_response.status_code == 200
             plan_payload = plan_response.json()
-            assert plan_payload['status'] == 'awaiting_approval'
-            run_id = plan_payload['run_id']
+            assert plan_payload["status"] == "awaiting_approval"
+            run_id = plan_payload["run_id"]
 
             approve_response = client.post(
-                f'/v1/research/runs/{run_id}/approve',
+                f"/v1/research/runs/{run_id}/approve",
                 json={},
             )
             assert approve_response.status_code == 200
             final_payload = approve_response.json()
-            assert final_payload['run_id'] == run_id
-            assert final_payload['status'] in ('completed', 'failed')
-            assert final_payload['report'] != ''
-            assert len(final_payload['evidence']) > 0
+            assert final_payload["run_id"] == run_id
+            assert final_payload["status"] in ("completed", "failed")
+            assert final_payload["report"] != ""
+            assert len(final_payload["evidence"]) > 0
 
-            stage_names = {t['stage'] for t in final_payload['trace']}
-            assert {'intake', 'plan'} <= stage_names
-            assert {'retrieve', 'tool-exec', 'synthesize', 'persist'} <= stage_names
+            stage_names = {t["stage"] for t in final_payload["trace"]}
+            assert {"intake", "plan"} <= stage_names
+            assert {"retrieve", "tool-exec", "synthesize", "persist"} <= stage_names
 
 
 def test_approve_with_edited_plan_uses_edited_plan(monkeypatch) -> None:
-    monkeypatch.setenv('FIN_AGENT__OPENAI__API_KEY', 'sk-test')
-    monkeypatch.setenv('FIN_AGENT__SEARCH__API_KEY', 'search-test')
+    monkeypatch.setenv("FIN_AGENT__OPENAI__API_KEY", "sk-test")
+    monkeypatch.setenv("FIN_AGENT__SEARCH__API_KEY", "search-test")
 
     captured_queries: list[str] = []
 
@@ -287,19 +344,17 @@ def test_approve_with_edited_plan_uses_edited_plan(monkeypatch) -> None:
         ),
     ):
         _mock_llm_chat._count = 0
-        mock_exa_cls.return_value.search.return_value = type(
-            "R", (), {"results": []}
-        )()
+        mock_exa_cls.return_value.search.return_value = type("R", (), {"results": []})()
 
         with TestClient(create_default_app()) as client:
             plan_response = client.post(
-                '/v1/research/runs',
-                json={'question': 'Summarize AAPL momentum', 'ticker': 'AAPL', 'mode': 'plan'},
+                "/v1/research/runs",
+                json={"question": "Summarize AAPL momentum", "ticker": "AAPL", "mode": "plan"},
             )
             assert plan_response.status_code == 200
             plan_payload = plan_response.json()
-            run_id = plan_payload['run_id']
-            original_queries = [q['query'] for q in plan_payload['plan']['search_queries']]
+            run_id = plan_payload["run_id"]
+            original_queries = [q["query"] for q in plan_payload["plan"]["search_queries"]]
             assert "MY EDITED QUERY" not in original_queries
 
             edited_plan = {
@@ -311,20 +366,20 @@ def test_approve_with_edited_plan_uses_edited_plan(monkeypatch) -> None:
                 "fetch_crypto_tickers": [],
             }
             approve_response = client.post(
-                f'/v1/research/runs/{run_id}/approve',
+                f"/v1/research/runs/{run_id}/approve",
                 json={"plan": edited_plan},
             )
             assert approve_response.status_code == 200
             final_payload = approve_response.json()
-            assert final_payload['status'] in ('completed', 'failed')
-            assert final_payload['plan']['search_queries'][0]['query'] == "MY EDITED QUERY"
+            assert final_payload["status"] in ("completed", "failed")
+            assert final_payload["plan"]["search_queries"][0]["query"] == "MY EDITED QUERY"
 
             assert captured_queries == ["MY EDITED QUERY"]
 
 
 def test_approve_unknown_run_id_returns_404(monkeypatch) -> None:
-    monkeypatch.setenv('FIN_AGENT__OPENAI__API_KEY', 'sk-test')
-    monkeypatch.setenv('FIN_AGENT__SEARCH__API_KEY', 'search-test')
+    monkeypatch.setenv("FIN_AGENT__OPENAI__API_KEY", "sk-test")
+    monkeypatch.setenv("FIN_AGENT__SEARCH__API_KEY", "search-test")
 
     with (
         patch("fin_agent.adapters.llm.openai.client.AsyncOpenAI"),
@@ -332,15 +387,15 @@ def test_approve_unknown_run_id_returns_404(monkeypatch) -> None:
     ):
         with TestClient(create_default_app()) as client:
             response = client.post(
-                '/v1/research/runs/no-such-run-id/approve',
+                "/v1/research/runs/no-such-run-id/approve",
                 json={},
             )
             assert response.status_code == 404
 
 
 def test_approve_run_not_awaiting_approval_returns_404(monkeypatch) -> None:
-    monkeypatch.setenv('FIN_AGENT__OPENAI__API_KEY', 'sk-test')
-    monkeypatch.setenv('FIN_AGENT__SEARCH__API_KEY', 'search-test')
+    monkeypatch.setenv("FIN_AGENT__OPENAI__API_KEY", "sk-test")
+    monkeypatch.setenv("FIN_AGENT__SEARCH__API_KEY", "search-test")
 
     with (
         patch("fin_agent.adapters.llm.openai.client.AsyncOpenAI") as mock_openai_cls,
@@ -353,37 +408,41 @@ def test_approve_run_not_awaiting_approval_returns_404(monkeypatch) -> None:
             "fin_agent.adapters.market_data.akshare.client.AKShareClient.get_market_data",
             side_effect=_mock_market_data_get,
         ),
+        patch(
+            "fin_agent.adapters.market_data.yfinance.client.YFinanceClient.get_company_info",
+            side_effect=_mock_company_info_get,
+        ),
+        patch(
+            "fin_agent.adapters.market_data.yfinance.client.YFinanceClient.get_analyst_data",
+            side_effect=_mock_analyst_get,
+        ),
     ):
         mock_client = AsyncMock()
-        mock_client.chat.completions.create = AsyncMock(
-            side_effect=Exception("mocked")
-        )
+        mock_client.chat.completions.create = AsyncMock(side_effect=Exception("mocked"))
         mock_openai_cls.return_value = mock_client
 
         _mock_llm_chat._count = 0
-        mock_exa_cls.return_value.search.return_value = type(
-            "R", (), {"results": []}
-        )()
+        mock_exa_cls.return_value.search.return_value = type("R", (), {"results": []})()
 
         with TestClient(create_default_app()) as client:
             create_response = client.post(
-                '/v1/research/runs',
-                json={'question': 'Summarize AAPL momentum', 'ticker': 'AAPL'},
+                "/v1/research/runs",
+                json={"question": "Summarize AAPL momentum", "ticker": "AAPL"},
             )
             assert create_response.status_code == 200
-            run_id = create_response.json()['run_id']
-            assert create_response.json()['status'] in ('completed', 'failed')
+            run_id = create_response.json()["run_id"]
+            assert create_response.json()["status"] in ("completed", "failed")
 
             approve_response = client.post(
-                f'/v1/research/runs/{run_id}/approve',
+                f"/v1/research/runs/{run_id}/approve",
                 json={},
             )
             assert approve_response.status_code == 404
 
 
 def test_auto_mode_unchanged_default(monkeypatch) -> None:
-    monkeypatch.setenv('FIN_AGENT__OPENAI__API_KEY', 'sk-test')
-    monkeypatch.setenv('FIN_AGENT__SEARCH__API_KEY', 'search-test')
+    monkeypatch.setenv("FIN_AGENT__OPENAI__API_KEY", "sk-test")
+    monkeypatch.setenv("FIN_AGENT__SEARCH__API_KEY", "search-test")
 
     with (
         patch("fin_agent.adapters.search.exa.client.Exa") as mock_exa_cls,
@@ -398,36 +457,40 @@ def test_auto_mode_unchanged_default(monkeypatch) -> None:
         ),
     ):
         _mock_llm_chat._count = 0
-        mock_exa_cls.return_value.search.return_value = type(
-            "R", (), {"results": []}
-        )()
+        mock_exa_cls.return_value.search.return_value = type("R", (), {"results": []})()
 
         with TestClient(create_default_app()) as client:
             create_response = client.post(
-                '/v1/research/runs',
-                json={'question': 'Summarize AAPL momentum', 'ticker': 'AAPL', 'mode': 'auto'},
+                "/v1/research/runs",
+                json={"question": "Summarize AAPL momentum", "ticker": "AAPL", "mode": "auto"},
             )
             assert create_response.status_code == 200
             payload = create_response.json()
-            assert payload['run_id']
-            assert payload['status'] in ('completed', 'failed')
-            assert payload['planned_stages'] == [
-                "intake", "plan", "retrieve", "tool-exec", "synthesize", "review", "persist",
+            assert payload["run_id"]
+            assert payload["status"] in ("completed", "failed")
+            assert payload["planned_stages"] == [
+                "intake",
+                "plan",
+                "retrieve",
+                "tool-exec",
+                "synthesize",
+                "review",
+                "persist",
             ]
-            assert payload['report'] != ''
-            assert payload['plan'] is None
+            assert payload["report"] != ""
+            assert payload["plan"] is None
 
             _mock_llm_chat._count = 0
             no_mode_response = client.post(
-                '/v1/research/runs',
-                json={'question': 'Summarize AAPL momentum', 'ticker': 'AAPL'},
+                "/v1/research/runs",
+                json={"question": "Summarize AAPL momentum", "ticker": "AAPL"},
             )
             assert no_mode_response.status_code == 200
             no_mode_payload = no_mode_response.json()
-            assert no_mode_payload['status'] in ('completed', 'failed')
-            assert no_mode_payload['planned_stages'] == payload['planned_stages']
-            assert no_mode_payload['report'] != ''
-            assert no_mode_payload['plan'] is None
+            assert no_mode_payload["status"] in ("completed", "failed")
+            assert no_mode_payload["planned_stages"] == payload["planned_stages"]
+            assert no_mode_payload["report"] != ""
+            assert no_mode_payload["plan"] is None
 
 
 class _FakeUrlResponse:
@@ -448,9 +511,9 @@ class _FakeUrlResponse:
 
 def _skill_env(monkeypatch, tmp_path) -> None:
     """Common env for the skill-management endpoints: keys + an isolated pool."""
-    monkeypatch.setenv('FIN_AGENT__OPENAI__API_KEY', 'sk-test')
-    monkeypatch.setenv('FIN_AGENT__SEARCH__API_KEY', 'search-test')
-    monkeypatch.setenv('FIN_AGENT__RUNTIME__DATA_DIR', str(tmp_path))
+    monkeypatch.setenv("FIN_AGENT__OPENAI__API_KEY", "sk-test")
+    monkeypatch.setenv("FIN_AGENT__SEARCH__API_KEY", "search-test")
+    monkeypatch.setenv("FIN_AGENT__RUNTIME__DATA_DIR", str(tmp_path))
 
 
 def test_skill_upload_appears_in_details_then_delete(monkeypatch, tmp_path) -> None:
@@ -465,35 +528,35 @@ def test_skill_upload_appears_in_details_then_delete(monkeypatch, tmp_path) -> N
                 "aliases: [mc]\n---\nCustom secret body."
             )
             up = client.post(
-                '/v1/skills/upload',
-                files={'file': ('SKILL.md', md, 'text/markdown')},
+                "/v1/skills/upload",
+                files={"file": ("SKILL.md", md, "text/markdown")},
             )
             assert up.status_code == 200
             body = up.json()
-            assert body['name'] == 'my-custom'
-            assert body['source'] == 'external'
-            assert body['overwritten'] is False
-            assert body['total_skills'] >= 3
+            assert body["name"] == "my-custom"
+            assert body["source"] == "external"
+            assert body["overwritten"] is False
+            assert body["total_skills"] >= 3
 
-            details_resp = client.get('/v1/skills/details')
-            details = details_resp.json()['skills']
-            entry = next(s for s in details if s['name'] == 'my-custom')
-            assert entry['source'] == 'external'
-            assert entry['trigger'] == '/my-custom'
-            assert 'mc' in entry['aliases']
+            details_resp = client.get("/v1/skills/details")
+            details = details_resp.json()["skills"]
+            entry = next(s for s in details if s["name"] == "my-custom")
+            assert entry["source"] == "external"
+            assert entry["trigger"] == "/my-custom"
+            assert "mc" in entry["aliases"]
             # The manifest body must never leak into the management listing.
-            assert 'Custom secret body' not in details_resp.text
+            assert "Custom secret body" not in details_resp.text
 
             # Hot-reload makes it usable in the anonymous picker with no restart.
-            picker = [s['name'] for s in client.get('/v1/skills').json()['skills']]
-            assert 'my-custom' in picker
+            picker = [s["name"] for s in client.get("/v1/skills").json()["skills"]]
+            assert "my-custom" in picker
 
-            deleted = client.delete('/v1/skills/my-custom')
+            deleted = client.delete("/v1/skills/my-custom")
             assert deleted.status_code == 200
-            assert deleted.json()['name'] == 'my-custom'
+            assert deleted.json()["name"] == "my-custom"
 
-            after = [s['name'] for s in client.get('/v1/skills/details').json()['skills']]
-            assert 'my-custom' not in after
+            after = [s["name"] for s in client.get("/v1/skills/details").json()["skills"]]
+            assert "my-custom" not in after
 
 
 def test_delete_builtin_skill_is_forbidden(monkeypatch, tmp_path) -> None:
@@ -504,11 +567,11 @@ def test_delete_builtin_skill_is_forbidden(monkeypatch, tmp_path) -> None:
     ):
         with TestClient(create_default_app()) as client:
             # Shipped builtin (has a SKILL.md on disk) -> 403.
-            assert client.delete('/v1/skills/valuation').status_code == 403
+            assert client.delete("/v1/skills/valuation").status_code == 403
             # Structural builtin (no file, source='builtin') -> 403.
-            assert client.delete('/v1/skills/research').status_code == 403
+            assert client.delete("/v1/skills/research").status_code == 403
             # Unknown name -> 404.
-            assert client.delete('/v1/skills/does-not-exist').status_code == 404
+            assert client.delete("/v1/skills/does-not-exist").status_code == 404
 
 
 def test_install_skill_from_url_endpoint(monkeypatch, tmp_path) -> None:
@@ -521,16 +584,16 @@ def test_install_skill_from_url_endpoint(monkeypatch, tmp_path) -> None:
     ):
         with TestClient(create_default_app()) as client:
             ok = client.post(
-                '/v1/skills/install',
-                json={'url': 'https://example.com/skills/url-skill/SKILL.md'},
+                "/v1/skills/install",
+                json={"url": "https://example.com/skills/url-skill/SKILL.md"},
             )
             assert ok.status_code == 200
-            assert ok.json()['name'] == 'url-skill'
-            names = [s['name'] for s in client.get('/v1/skills/details').json()['skills']]
-            assert 'url-skill' in names
+            assert ok.json()["name"] == "url-skill"
+            names = [s["name"] for s in client.get("/v1/skills/details").json()["skills"]]
+            assert "url-skill" in names
 
             # A non-http(s) scheme is rejected at the boundary with 400.
-            bad = client.post('/v1/skills/install', json={'url': 'file:///etc/passwd'})
+            bad = client.post("/v1/skills/install", json={"url": "file:///etc/passwd"})
             assert bad.status_code == 400
 
 
@@ -542,8 +605,8 @@ def test_upload_empty_file_is_rejected(monkeypatch, tmp_path) -> None:
     ):
         with TestClient(create_default_app()) as client:
             r = client.post(
-                '/v1/skills/upload',
-                files={'file': ('SKILL.md', '', 'text/markdown')},
+                "/v1/skills/upload",
+                files={"file": ("SKILL.md", "", "text/markdown")},
             )
             assert r.status_code == 400
 
@@ -561,13 +624,13 @@ def test_reload_endpoint_picks_up_handdropped_skill(monkeypatch, tmp_path) -> No
             (skill_dir / "SKILL.md").write_text(
                 "---\nname: dropped\n---\nDropped body.", encoding="utf-8"
             )
-            before = [s['name'] for s in client.get('/v1/skills').json()['skills']]
-            assert 'dropped' not in before
+            before = [s["name"] for s in client.get("/v1/skills").json()["skills"]]
+            assert "dropped" not in before
 
-            assert client.post('/v1/skills/reload').status_code == 200
+            assert client.post("/v1/skills/reload").status_code == 200
 
-            after = [s['name'] for s in client.get('/v1/skills').json()['skills']]
-            assert 'dropped' in after
+            after = [s["name"] for s in client.get("/v1/skills").json()["skills"]]
+            assert "dropped" in after
 
 
 def test_research_cli_runs(monkeypatch) -> None:

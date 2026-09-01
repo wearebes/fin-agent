@@ -30,7 +30,7 @@ class ResearchService:
         providers: dict[str, str],
         run_store: RunStore,
         deps: StageDeps,
-        skill_dispatcher: SkillDispatcher,
+        skill_dispatcher: SkillDispatcher | None = None,
     ) -> None:
         self._environment = environment
         self._providers = providers
@@ -84,7 +84,11 @@ class ResearchService:
         on_progress: ProgressCallback | None = None,
     ) -> RunResult:
         stages = build_stage_plan(self.workflow_config)
-        skill = self._skill_dispatcher.resolve(request.selected_skill)
+        skill = (
+            self._skill_dispatcher.resolve(request.selected_skill)
+            if self._skill_dispatcher
+            else None
+        )
         ctx = ResearchContext(
             request=request,
             skill_instructions=skill.body if skill else "",
@@ -128,7 +132,11 @@ class ResearchService:
         """mode='plan' entry point: runs intake+plan only, persists the
         context for later resumption, and returns an awaiting-approval result."""
         stages = build_stage_plan(self.workflow_config)
-        skill = self._skill_dispatcher.resolve(request.selected_skill)
+        skill = (
+            self._skill_dispatcher.resolve(request.selected_skill)
+            if self._skill_dispatcher
+            else None
+        )
         ctx = ResearchContext(
             request=request,
             skill_instructions=skill.body if skill else "",
@@ -173,9 +181,7 @@ class ResearchService:
         self._run_store.save_context(run.run_id, ctx.model_dump_json())
         return run
 
-    async def approve(
-        self, run_id: str, edited_plan: RetrievalPlan | None
-    ) -> RunResult | None:
+    async def approve(self, run_id: str, edited_plan: RetrievalPlan | None) -> RunResult | None:
         """Resumes a plan-mode run: loads the persisted context, optionally
         replaces `ctx.plan` with the user-edited version, and runs the
         remaining stages to completion. Returns None if no pending plan
@@ -203,12 +209,8 @@ class ResearchService:
             logger.exception("Resume execution failed for run_id=%s", run_id)
             status = RunStatus.FAILED
 
-        if status == RunStatus.COMPLETED:
-            failed_stages = [
-                t for t in ctx.trace if "failed" in t.detail.lower()
-            ]
-            if failed_stages:
-                status = RunStatus.FAILED
+        if ctx.failed_stages or not ctx.report.strip():
+            status = RunStatus.FAILED
 
         run = RunResult(
             run_id=ctx.run_id,

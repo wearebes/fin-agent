@@ -63,13 +63,15 @@ def parse_skill_md(text: str) -> dict[str, Any]:
     if not isinstance(frontmatter, dict):
         frontmatter = {}
 
-    return {**frontmatter, "body": text[match.end():].strip()}
+    return {**frontmatter, "body": text[match.end() :].strip()}
 
 
 class SkillManifest(BaseModel):
     """Full, file-backed skill definition: catalog fields + prompt + provenance."""
 
-    name: str = Field(..., description="Unique skill name; also its '/<name>' trigger and directory name.")
+    name: str = Field(
+        ..., description="Unique skill name; also its '/<name>' trigger and directory name."
+    )
     description: str = Field(default="", description="One-line catalog description.")
     when_to_use: str = Field(
         default="", description="Guidance on when this skill should be selected."

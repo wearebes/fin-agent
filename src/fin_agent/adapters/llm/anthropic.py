@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 
 from fin_agent.adapters.llm.openai.config import OpenAIConfig
-from fin_agent.domain.types import LLMMessage, LLMResponse
+from fin_agent.domain.types import LLMMessage, LLMResponse, ToolDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,8 @@ class AnthropicClient:
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        tools: list[ToolDefinition] | None = None,
+        tool_choice: str | None = None,
     ) -> LLMResponse:
         try:
             data = await self._request(messages, max_tokens or 4096)

@@ -101,6 +101,12 @@ def build_model_router() -> APIRouter:
 
     @router.post("/v1/research/personal/stream")
     async def personal_research(payload: ResearchRequest, request: Request) -> StreamingResponse:
+        if payload.mode == "plan":
+            raise HTTPException(
+                409,
+                "计划审批暂不支持个人 API，请使用自动模式。 / "
+                "Personal API supports auto mode only.",
+            )
         user = _get_current_user(request)
         container = request.app.state.container
         connection = container.model_connections.get(user.id)

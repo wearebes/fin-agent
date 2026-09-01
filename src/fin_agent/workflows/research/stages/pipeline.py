@@ -3,10 +3,17 @@ from __future__ import annotations
 import json
 import logging
 import re
+from typing import Any
 
 from pydantic import BaseModel, StrictBool
 
-from fin_agent.domain.types import EvidenceItem, LLMMessage, RetrievalPlan, TraceRecord
+from fin_agent.domain.types import (
+    EvidenceItem,
+    LLMMessage,
+    RetrievalPlan,
+    ToolCall,
+    TraceRecord,
+)
 from fin_agent.workflows.research.context import (
     ResearchContext,
     ToolCallRecord,
@@ -67,6 +74,23 @@ class ReviewDecision(BaseModel):
     feedback: str = ""
 
 
+def _parse_legacy_tool_call(text: str, iteration: int) -> ToolCall | None:
+    match = re.search(r"```tool_call\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if not match:
+        return None
+    try:
+        payload: Any = json.loads(match.group(1))
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    name = payload.get("name")
+    arguments = payload.get("arguments", {})
+    if not isinstance(name, str) or not name or not isinstance(arguments, dict):
+        return None
+    return ToolCall(id=f"legacy-{iteration}", name=name, arguments=arguments)
+
+
 def _summarize_plan(plan: RetrievalPlan) -> str:
     """Render the planning stage's RetrievalPlan into a few human-readable lines.
 
@@ -83,24 +107,14 @@ def _summarize_plan(plan: RetrievalPlan) -> str:
         )
         lines.append(f"- Planned market data: {tickers}")
     if plan.financials:
-        fins = ", ".join(
-            f"{f.ticker} {f.statement_type.value}" for f in plan.financials
-        )
+        fins = ", ".join(f"{f.ticker} {f.statement_type.value}" for f in plan.financials)
         lines.append(f"- Planned financials: {fins}")
     if plan.fetch_company_info_tickers:
-        lines.append(
-            "- Planned company info: "
-            + ", ".join(plan.fetch_company_info_tickers)
-        )
+        lines.append("- Planned company info: " + ", ".join(plan.fetch_company_info_tickers))
     if plan.fetch_analyst_data_tickers:
-        lines.append(
-            "- Planned analyst data: "
-            + ", ".join(plan.fetch_analyst_data_tickers)
-        )
+        lines.append("- Planned analyst data: " + ", ".join(plan.fetch_analyst_data_tickers))
     if plan.fetch_crypto_tickers:
-        lines.append(
-            "- Planned crypto data: " + ", ".join(plan.fetch_crypto_tickers)
-        )
+        lines.append("- Planned crypto data: " + ", ".join(plan.fetch_crypto_tickers))
     if not lines:
         return "(no explicit retrieval plan was produced)"
     return "\n".join(lines)
@@ -110,7 +124,13 @@ async def tool_exec(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
     registry = deps.tool_registry
     tool_definitions = registry.definitions()
     lang_instruction = get_lang_instruction(ctx.request.lang)
-    system_prompt = TOOL_EXEC_SYSTEM_PROMPT + "\n" + lang_instruction
+    fallback_protocol = (
+        "\nIf native tool calling is unavailable, request one tool with this exact "
+        "format:\n```tool_call\n"
+        '{"name":"<tool_name>","arguments":{}}'
+        "\n```\nAvailable tool schemas: " + json.dumps(registry.tool_schemas(), ensure_ascii=False)
+    )
+    system_prompt = TOOL_EXEC_SYSTEM_PROMPT + fallback_protocol + "\n" + lang_instruction
     if ctx.skill_instructions:
         system_prompt = ctx.skill_instructions + "\n\n" + system_prompt
 
@@ -127,9 +147,7 @@ async def tool_exec(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
         ),
     ]
     seen_calls = {
-        json.dumps(
-            [call.tool_name, call.arguments], sort_keys=True, ensure_ascii=False
-        )
+        json.dumps([call.tool_name, call.arguments], sort_keys=True, ensure_ascii=False)
         for call in ctx.tool_calls
     }
 
@@ -144,12 +162,15 @@ async def tool_exec(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
             )
         except Exception:
             logger.exception("tool-exec: LLM call failed")
-            ctx.trace.append(
-                TraceRecord(stage="tool-exec", detail="Tool planning unavailable")
-            )
+            ctx.trace.append(TraceRecord(stage="tool-exec", detail="Tool planning unavailable"))
             break
 
-        if not resp.has_tool_calls:
+        native_calls = resp.message.tool_calls or []
+        legacy_call = None
+        if not native_calls:
+            legacy_call = _parse_legacy_tool_call(resp.message.content, ctx.iteration)
+        requested = native_calls or ([legacy_call] if legacy_call else [])
+        if not requested:
             ctx.trace.append(
                 TraceRecord(
                     stage="tool-exec",
@@ -158,24 +179,20 @@ async def tool_exec(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
             )
             break
 
-        requested = resp.message.tool_calls or []
         names = ", ".join(
-            f"{tc.name}({json.dumps(tc.arguments, ensure_ascii=False)})"
-            for tc in requested
+            f"{tc.name}({json.dumps(tc.arguments, ensure_ascii=False)})" for tc in requested
         )
         ctx.trace.append(
             TraceRecord(
                 stage="tool-exec",
-                detail=(
-                    f"Model requested {len(requested)} tool call(s) in parallel: "
-                    f"{names}"
-                ),
+                detail=(f"Model requested {len(requested)} tool call(s) in parallel: {names}"),
             )
         )
 
-        # Replay the assistant tool-call turn into the running conversation.
-        messages.append(resp.message)
+        if native_calls:
+            messages.append(resp.message)
 
+        repeated_call = False
         for tc in requested:
             if len(ctx.tool_calls) >= deps.config.max_tool_calls:
                 break
@@ -183,9 +200,16 @@ async def tool_exec(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
             handler = registry.get(tc.name)
             arguments = tc.arguments
             usable_result = False
+            accepted = False
             try:
                 if handler is None:
                     result_text = f"Unknown tool '{tc.name}'."
+                    ctx.trace.append(
+                        TraceRecord(
+                            stage="tool-exec",
+                            detail=f"Unknown tool: {tc.name}, skipping",
+                        )
+                    )
                 else:
                     arguments = registry.validate_arguments(tc.name, arguments)
                     fingerprint = json.dumps(
@@ -193,45 +217,53 @@ async def tool_exec(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
                     )
                     if fingerprint in seen_calls:
                         result_text = "Repeated identical tool call blocked."
+                        repeated_call = True
+                        ctx.trace.append(
+                            TraceRecord(
+                                stage="tool-exec",
+                                detail="Repeated identical tool call; stopping tool loop",
+                            )
+                        )
                     else:
                         seen_calls.add(fingerprint)
                         result_text = await handler(**arguments)
+                        accepted = True
                         usable_result = bool(
-                            result_text
-                            and result_text.strip() not in ("[]", "{}", "null")
+                            result_text and result_text.strip() not in ("[]", "{}", "null")
                         )
             except ValueError:
                 result_text = f"Invalid arguments for tool '{tc.name}'."
+                ctx.trace.append(
+                    TraceRecord(
+                        stage="tool-exec",
+                        detail=f"Rejected invalid arguments for {tc.name}",
+                    )
+                )
             except Exception:
                 logger.exception("tool-exec: tool %s failed", tc.name)
                 result_text = "Tool execution failed."
             result_text = result_text or ""
-            result_summary = result_text[:500]
+            result_summary = result_text
 
-            messages.append(
-                LLMMessage(
-                    role="tool",
-                    tool_call_id=tc.id,
-                    name=tc.name,
-                    content=result_text,
+            if native_calls:
+                messages.append(
+                    LLMMessage(
+                        role="tool",
+                        tool_call_id=tc.id,
+                        name=tc.name,
+                        content=result_text,
+                    )
                 )
-            )
-            ctx = ctx.model_copy(
-                update={
-                    "tool_calls": ctx.tool_calls
-                    + [
-                        ToolCallRecord(
-                            tool_name=tc.name,
-                            arguments=arguments,
-                            result_summary=result_summary,
-                        )
-                    ]
-                }
-            )
+            if accepted:
+                ctx.tool_calls.append(
+                    ToolCallRecord(
+                        tool_name=tc.name,
+                        arguments=arguments,
+                        result_summary=result_summary,
+                    )
+                )
             if usable_result:
-                ctx.evidence.append(
-                    EvidenceItem(source=f"tool:{tc.name}", summary=result_summary)
-                )
+                ctx.evidence.append(EvidenceItem(source=f"tool:{tc.name}", summary=result_summary))
             ctx.trace.append(
                 TraceRecord(
                     stage="tool-exec",
@@ -239,13 +271,26 @@ async def tool_exec(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
                 )
             )
 
+        if repeated_call:
+            break
+        if legacy_call:
+            messages = [
+                LLMMessage(role="system", content=system_prompt),
+                LLMMessage(
+                    role="user",
+                    content=(
+                        f"Research question: {research_question(ctx.request)}\n\n"
+                        f"Retrieval plan from the planning stage:\n{plan_summary}\n\n"
+                        f"Evidence so far:\n{render_evidence(ctx.evidence)}"
+                    ),
+                ),
+            ]
+
     if (
         ctx.iteration >= deps.config.max_iterations
         or len(ctx.tool_calls) >= deps.config.max_tool_calls
     ):
-        ctx.trace.append(
-            TraceRecord(stage="tool-exec", detail="Tool execution budget reached")
-        )
+        ctx.trace.append(TraceRecord(stage="tool-exec", detail="Tool execution budget reached"))
 
     ctx.trace.append(
         TraceRecord(
@@ -275,8 +320,7 @@ async def synthesize(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
         LLMMessage(
             role="user",
             content=(
-                f"Research question: {research_question(ctx.request)}\n\n"
-                f"Evidence:\n{evidence_text}"
+                f"Research question: {research_question(ctx.request)}\n\nEvidence:\n{evidence_text}"
             ),
         ),
     ]

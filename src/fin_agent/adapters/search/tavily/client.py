@@ -15,15 +15,15 @@ class TavilySearchClient:
     def __init__(self, config: TavilySearchConfig | None = None) -> None:
         self._config = config or TavilySearchConfig()
         api_key = (
-            self._config.api_key.get_secret_value()
-            if self._config.api_key is not None
-            else None
+            self._config.api_key.get_secret_value() if self._config.api_key is not None else None
         )
         if api_key:
             self._client = TavilyClient(api_key=api_key)
         else:
             self._client = None
-            logger.warning("TavilySearchClient: no API key configured, search will return empty results")
+            logger.warning(
+                "TavilySearchClient: no API key configured, search will return empty results"
+            )
 
     def search(
         self,

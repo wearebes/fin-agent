@@ -189,7 +189,8 @@ export default function ChatView({ sidebarOpen, onToggleSidebar }: {
       </div>
       <Composer lang={lang} disabled={running || !session} onSubmit={submit}
         draft={draft} onChange={updateDraft} hasHistory={history.length > 0}
-        useHistory={useHistory} onHistoryChange={setUseHistory} />
+        useHistory={useHistory} onHistoryChange={setUseHistory}
+        allowPlanMode={modelSource === 'default'} />
     </section>
   )
 }

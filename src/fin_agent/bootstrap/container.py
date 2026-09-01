@@ -110,10 +110,16 @@ def _build_auth_service(user_store: UserStore, settings: AppSettings) -> AuthSer
 def _build_search_provider(settings: AppSettings) -> ExaSearchClient | TavilySearchClient:
     provider = settings.providers.default_selection.search
     if provider == SearchProviderName.TAVILY:
+        if not settings.tavily.api_key and settings.search.api_key:
+            logger.info("Tavily key unavailable; using configured Exa client")
+            return ExaSearchClient(settings.search)
         if not settings.tavily.enabled:
             logger.info("TavilySearchClient disabled via config, returning no-op client")
             return TavilySearchClient(settings.tavily.model_copy(update={"api_key": None}))
         logger.info("Using TavilySearchClient")
+        return TavilySearchClient(settings.tavily)
+    if not settings.search.api_key and settings.tavily.api_key:
+        logger.info("Exa key unavailable; using configured Tavily client")
         return TavilySearchClient(settings.tavily)
     if not settings.search.enabled:
         logger.info("ExaSearchClient disabled via config, returning no-op client")
@@ -125,7 +131,7 @@ def _build_search_provider(settings: AppSettings) -> ExaSearchClient | TavilySea
 def build_container(settings: AppSettings) -> Container:
     errors = collect_runtime_validation_errors(settings)
     if errors:
-        raise RuntimeSettingsError('\n'.join(errors))
+        raise RuntimeSettingsError("\n".join(errors))
 
     run_store, user_store = _build_stores(settings)
     auth_service = _build_auth_service(user_store, settings)
@@ -168,7 +174,7 @@ def build_container(settings: AppSettings) -> Container:
         user_store=user_store,
         research_service=ResearchService(
             environment=settings.app.environment,
-            providers=settings.providers.default_selection.model_dump(mode='json'),
+            providers=settings.providers.default_selection.model_dump(mode="json"),
             run_store=run_store,
             deps=deps,
             skill_dispatcher=skill_dispatcher,

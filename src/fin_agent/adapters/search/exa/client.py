@@ -15,15 +15,15 @@ class ExaSearchClient:
     def __init__(self, config: ExaSearchConfig | None = None) -> None:
         self._config = config or ExaSearchConfig()
         api_key = (
-            self._config.api_key.get_secret_value()
-            if self._config.api_key is not None
-            else None
+            self._config.api_key.get_secret_value() if self._config.api_key is not None else None
         )
         if api_key:
             self._exa = Exa(api_key=api_key)
         else:
             self._exa = None
-            logger.warning("ExaSearchClient: no API key configured, search will return empty results")
+            logger.warning(
+                "ExaSearchClient: no API key configured, search will return empty results"
+            )
 
     def search(
         self,

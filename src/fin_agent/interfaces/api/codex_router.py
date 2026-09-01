@@ -89,6 +89,12 @@ def build_codex_router() -> APIRouter:
 
     @router.post("/v1/research/codex/stream")
     async def codex_research(payload: ResearchRequest, request: Request) -> StreamingResponse:
+        if payload.mode == "plan":
+            raise HTTPException(
+                409,
+                "计划审批暂不支持本机 Codex，请使用自动模式。 / "
+                "Local Codex supports auto mode only.",
+            )
         bridge, user_id = local_owner(request)
         if bridge.busy:
             raise HTTPException(429, "本机 Codex 忙，请勿重复提交。 / Local Codex is busy.")

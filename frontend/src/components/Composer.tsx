@@ -49,6 +49,7 @@ export default function Composer({
   useHistory,
   onHistoryChange,
   hasHistory,
+  allowPlanMode,
 }: {
   lang: Lang
   disabled: boolean
@@ -58,6 +59,7 @@ export default function Composer({
   useHistory: boolean
   onHistoryChange: (enabled: boolean) => void
   hasHistory: boolean
+  allowPlanMode: boolean
 }) {
   const { question, ticker } = draft
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null)
@@ -140,7 +142,12 @@ export default function Composer({
   const submit = () => {
     const q = question.trim()
     if (!q || disabled) return
-    onSubmit(q, ticker.trim() || null, selectedSkill?.name ?? null, planMode ? 'plan' : 'auto')
+    onSubmit(
+      q,
+      ticker.trim() || null,
+      selectedSkill?.name ?? null,
+      allowPlanMode && planMode ? 'plan' : 'auto',
+    )
     onChange({ question: '', ticker: '' })
     setSelectedSkill(null)
     closePicker()
@@ -279,16 +286,18 @@ export default function Composer({
             <span className="thinking-toggle-label">{t('researchProcess')}</span>
           </button>
 
-          <button
-            type="button"
-            className={`thinking-toggle${planMode ? ' active' : ''}`}
-            onClick={() => setPlanMode(!planMode)}
-            title={planMode ? t('planModeOn') : t('planModeOff')}
-            aria-pressed={planMode}
-          >
-            <ListChecks size={13} />
-            <span className="thinking-toggle-label">{t('planMode')}</span>
-          </button>
+          {allowPlanMode && (
+            <button
+              type="button"
+              className={`thinking-toggle${planMode ? ' active' : ''}`}
+              onClick={() => setPlanMode(!planMode)}
+              title={planMode ? t('planModeOn') : t('planModeOff')}
+              aria-pressed={planMode}
+            >
+              <ListChecks size={13} />
+              <span className="thinking-toggle-label">{t('planMode')}</span>
+            </button>
+          )}
 
           <button
             className="send-btn"
