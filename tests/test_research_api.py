@@ -261,6 +261,7 @@ def test_approve_resumes_and_returns_final_report(monkeypatch) -> None:
 def test_approve_with_edited_plan_uses_edited_plan(monkeypatch) -> None:
     monkeypatch.setenv('FIN_AGENT__OPENAI__API_KEY', 'sk-test')
     monkeypatch.setenv('FIN_AGENT__SEARCH__API_KEY', 'search-test')
+    monkeypatch.setenv('FIN_AGENT__PROVIDERS__DEFAULT_SELECTION__SEARCH', 'exa')
 
     captured_queries: list[str] = []
 

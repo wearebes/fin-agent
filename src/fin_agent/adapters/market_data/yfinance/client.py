@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
+from urllib.parse import quote, urlencode
+from urllib.request import Request, urlopen
 
 import yfinance as yf
 
@@ -112,15 +115,11 @@ class YFinanceClient:
         frequency: DataFrequency = DataFrequency.DAILY,
         period: str | None = None,
     ) -> MarketDataResponse:
-        empty = MarketDataResponse(
-            ticker=ticker, asset_type=asset_type, frequency=frequency
-        )
+        empty = MarketDataResponse(ticker=ticker, asset_type=asset_type, frequency=frequency)
         try:
             t = yf.Ticker(ticker)
             interval = _FREQUENCY_INTERVAL.get(frequency, "1d")
-            hist = t.history(
-                period=period or self._config.history_period, interval=interval
-            )
+            hist = t.history(period=period or self._config.history_period, interval=interval)
             if hist is None or hist.empty:
                 return empty
             points: list[MarketDataPoint] = []
@@ -141,7 +140,80 @@ class YFinanceClient:
                 ticker=ticker, asset_type=asset_type, frequency=frequency, data=points
             )
         except Exception:
-            logger.exception("get_market_data failed for ticker=%s", ticker)
+            logger.warning(
+                "yfinance history failed for ticker=%s; trying Yahoo chart fallback",
+                ticker,
+            )
+            return self._get_chart_market_data(
+                ticker,
+                asset_type,
+                frequency=frequency,
+                period=period,
+                empty=empty,
+            )
+
+    def _get_chart_market_data(
+        self,
+        ticker: str,
+        asset_type: AssetType,
+        *,
+        frequency: DataFrequency,
+        period: str | None,
+        empty: MarketDataResponse,
+    ) -> MarketDataResponse:
+        """Use Yahoo's public chart response when the yfinance crumb is limited.
+
+        This preserves the same provider and response semantics; it is not a
+        synthetic-data fallback. Malformed or unavailable responses still
+        degrade to the caller-supplied empty result.
+        """
+        try:
+            interval = _FREQUENCY_INTERVAL.get(frequency, "1d")
+            query = urlencode(
+                {
+                    "range": period or self._config.history_period,
+                    "interval": interval,
+                    "events": "history",
+                }
+            )
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(ticker)}?{query}"
+            request = Request(url, headers={"User-Agent": "Mozilla/5.0 fin-agent"})
+            with urlopen(request, timeout=self._config.request_timeout_seconds) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            result = payload["chart"]["result"][0]
+            timestamps = result.get("timestamp") or []
+            quote_data = (result.get("indicators", {}).get("quote") or [{}])[0]
+            opens = quote_data.get("open") or []
+            highs = quote_data.get("high") or []
+            lows = quote_data.get("low") or []
+            closes = quote_data.get("close") or []
+            volumes = quote_data.get("volume") or []
+            points: list[MarketDataPoint] = []
+            for index, timestamp in enumerate(timestamps):
+                values = [opens[index], highs[index], lows[index], closes[index]]
+                if any(value is None for value in values):
+                    continue
+                volume = volumes[index] if index < len(volumes) else None
+                points.append(
+                    MarketDataPoint(
+                        ticker=ticker,
+                        asset_type=asset_type,
+                        trade_date=datetime.fromtimestamp(timestamp, UTC).date(),
+                        open=float(values[0]),
+                        high=float(values[1]),
+                        low=float(values[2]),
+                        close=float(values[3]),
+                        volume=_int_safe(volume),
+                    )
+                )
+            return MarketDataResponse(
+                ticker=ticker,
+                asset_type=asset_type,
+                frequency=frequency,
+                data=points,
+            )
+        except Exception:
+            logger.exception("Yahoo chart fallback failed for ticker=%s", ticker)
             return empty
 
     def get_financials(
@@ -151,9 +223,7 @@ class YFinanceClient:
         *,
         frequency: DataFrequency = DataFrequency.YEARLY,
     ) -> FinancialStatementResponse:
-        empty = FinancialStatementResponse(
-            ticker=ticker, statement_type=statement_type
-        )
+        empty = FinancialStatementResponse(ticker=ticker, statement_type=statement_type)
         try:
             t = yf.Ticker(ticker)
             is_quarterly = frequency == DataFrequency.QUARTERLY
@@ -168,9 +238,7 @@ class YFinanceClient:
             for col_idx in col_indices:
                 col_date = df.columns[col_idx]
                 fiscal_year = col_date.year
-                fiscal_quarter = (
-                    (col_date.month - 1) // 3 + 1 if is_quarterly else None
-                )
+                fiscal_quarter = (col_date.month - 1) // 3 + 1 if is_quarterly else None
                 cur: dict[str, float | None] = {
                     k: _pick_metric(df, v, col_idx) for k, v in metric_map.items()
                 }
@@ -187,12 +255,8 @@ class YFinanceClient:
                         total_equity=cur.get("total_equity"),
                         operating_cash_flow=cur.get("operating_cash_flow"),
                         free_cash_flow=cur.get("free_cash_flow"),
-                        revenue_yoy=_yoy(
-                            cur.get("total_revenue"), prev.get("total_revenue")
-                        ),
-                        net_profit_margin=_margin(
-                            cur.get("net_income"), cur.get("total_revenue")
-                        ),
+                        revenue_yoy=_yoy(cur.get("total_revenue"), prev.get("total_revenue")),
+                        net_profit_margin=_margin(cur.get("net_income"), cur.get("total_revenue")),
                     )
                 )
                 prev = cur
@@ -249,9 +313,7 @@ class YFinanceClient:
         empty = CryptoDataResponse(ticker=ticker)
         try:
             t = yf.Ticker(ticker)
-            hist = t.history(
-                period=period or self._config.history_period, interval="1d"
-            )
+            hist = t.history(period=period or self._config.history_period, interval="1d")
             if hist is None or hist.empty:
                 return empty
             info: dict[str, Any] = t.info or {}
@@ -275,9 +337,7 @@ class YFinanceClient:
             return empty
 
     @staticmethod
-    def _get_statement_df(
-        yt: yf.Ticker, stmt_type: FinancialStatementType, quarterly: bool
-    ) -> Any:
+    def _get_statement_df(yt: yf.Ticker, stmt_type: FinancialStatementType, quarterly: bool) -> Any:
         if stmt_type == FinancialStatementType.INCOME_STATEMENT:
             return yt.quarterly_income_stmt if quarterly else yt.income_stmt
         if stmt_type == FinancialStatementType.BALANCE_SHEET:
@@ -299,9 +359,7 @@ class YFinanceClient:
         return {}
 
     @staticmethod
-    def _parse_recommendations(
-        yt: yf.Ticker, ticker: str
-    ) -> list[AnalystRecommendation]:
+    def _parse_recommendations(yt: yf.Ticker, ticker: str) -> list[AnalystRecommendation]:
         try:
             ug = yt.upgrades_downgrades
             if ug is None or ug.empty:
@@ -330,11 +388,7 @@ class YFinanceClient:
                 return []
             estimates: list[EarningsEstimate] = []
             for idx, row in eh.iterrows():
-                period_str = (
-                    str(row["period"])
-                    if "period" in eh.columns
-                    else str(_trade_date(idx))
-                )
+                period_str = str(row["period"]) if "period" in eh.columns else str(_trade_date(idx))
                 estimates.append(
                     EarningsEstimate(
                         ticker=ticker,

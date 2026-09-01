@@ -32,9 +32,7 @@ def _make_history_df() -> pd.DataFrame:
             "Close": [101.0, 102.5],
             "Volume": [1000000, 1200000],
         },
-        index=pd.DatetimeIndex(
-            [pd.Timestamp("2025-01-02"), pd.Timestamp("2025-01-03")]
-        ),
+        index=pd.DatetimeIndex([pd.Timestamp("2025-01-02"), pd.Timestamp("2025-01-03")]),
     )
 
 
@@ -72,9 +70,7 @@ def _make_upgrades_df() -> pd.DataFrame:
             "Firm": ["Goldman", "Morgan"],
             "To Grade": ["Buy", "Hold"],
         },
-        index=pd.DatetimeIndex(
-            [pd.Timestamp("2025-01-10"), pd.Timestamp("2025-01-12")]
-        ),
+        index=pd.DatetimeIndex([pd.Timestamp("2025-01-10"), pd.Timestamp("2025-01-12")]),
     )
 
 
@@ -85,9 +81,7 @@ def _make_earnings_df() -> pd.DataFrame:
             "epsEstimate": [1.5, 1.2],
             "epsActual": [1.6, 1.1],
         },
-        index=pd.DatetimeIndex(
-            [pd.Timestamp("2025-01-15"), pd.Timestamp("2024-12-15")]
-        ),
+        index=pd.DatetimeIndex([pd.Timestamp("2025-01-15"), pd.Timestamp("2024-12-15")]),
     )
 
 
@@ -158,8 +152,12 @@ class TestGetMarketData:
         assert isinstance(resp, MarketDataResponse)
         assert len(resp.data) == 0
 
+    @patch(
+        "fin_agent.adapters.market_data.yfinance.client.urlopen",
+        side_effect=OSError("fallback unavailable"),
+    )
     @patch("fin_agent.adapters.market_data.yfinance.client.yf.Ticker")
-    def test_exception_returns_empty_response(self, mock_ticker_cls):
+    def test_exception_returns_empty_response(self, mock_ticker_cls, _mock_urlopen):
         mock_ticker_cls.side_effect = Exception("network error")
         client = YFinanceClient()
         resp = client.get_market_data("AAPL", AssetType.STOCK)
@@ -167,6 +165,24 @@ class TestGetMarketData:
         assert isinstance(resp, MarketDataResponse)
         assert len(resp.data) == 0
         assert resp.ticker == "AAPL"
+
+    @patch("fin_agent.adapters.market_data.yfinance.client.urlopen")
+    @patch("fin_agent.adapters.market_data.yfinance.client.yf.Ticker")
+    def test_exception_uses_chart_fallback(self, mock_ticker_cls, mock_urlopen):
+        mock_ticker_cls.side_effect = Exception("crumb rate limited")
+        http_response = MagicMock()
+        http_response.__enter__.return_value.read.return_value = b"""
+        {"chart":{"result":[{"timestamp":[1735776000,1735862400],
+        "indicators":{"quote":[{"open":[100.0,101.0],"high":[102.0,103.0],
+        "low":[99.0,100.0],"close":[101.0,102.0],"volume":[1000,1200]}]}}]}}
+        """
+        mock_urlopen.return_value = http_response
+
+        resp = YFinanceClient().get_market_data("AAPL", AssetType.STOCK)
+
+        assert len(resp.data) == 2
+        assert resp.data[0].close == 101.0
+        assert resp.data[1].volume == 1200
 
     @patch("fin_agent.adapters.market_data.yfinance.client.yf.Ticker")
     def test_period_override(self, mock_ticker_cls):
@@ -181,13 +197,9 @@ class TestGetMarketData:
 class TestGetFinancials:
     @patch("fin_agent.adapters.market_data.yfinance.client.yf.Ticker")
     def test_income_statement_extracts_metrics(self, mock_ticker_cls):
-        mock_ticker_cls.return_value = _mock_ticker(
-            income_stmt=_make_income_stmt_df()
-        )
+        mock_ticker_cls.return_value = _mock_ticker(income_stmt=_make_income_stmt_df())
         client = YFinanceClient()
-        resp = client.get_financials(
-            "AAPL", FinancialStatementType.INCOME_STATEMENT
-        )
+        resp = client.get_financials("AAPL", FinancialStatementType.INCOME_STATEMENT)
 
         assert isinstance(resp, FinancialStatementResponse)
         assert resp.ticker == "AAPL"
@@ -201,13 +213,9 @@ class TestGetFinancials:
 
     @patch("fin_agent.adapters.market_data.yfinance.client.yf.Ticker")
     def test_revenue_yoy_calculation(self, mock_ticker_cls):
-        mock_ticker_cls.return_value = _mock_ticker(
-            income_stmt=_make_income_stmt_df()
-        )
+        mock_ticker_cls.return_value = _mock_ticker(income_stmt=_make_income_stmt_df())
         client = YFinanceClient()
-        resp = client.get_financials(
-            "AAPL", FinancialStatementType.INCOME_STATEMENT
-        )
+        resp = client.get_financials("AAPL", FinancialStatementType.INCOME_STATEMENT)
 
         latest = resp.data[0]
         assert latest.revenue_yoy == pytest.approx(0.25)
@@ -216,13 +224,9 @@ class TestGetFinancials:
 
     @patch("fin_agent.adapters.market_data.yfinance.client.yf.Ticker")
     def test_balance_sheet_extracts_metrics(self, mock_ticker_cls):
-        mock_ticker_cls.return_value = _mock_ticker(
-            balance_sheet=_make_balance_sheet_df()
-        )
+        mock_ticker_cls.return_value = _mock_ticker(balance_sheet=_make_balance_sheet_df())
         client = YFinanceClient()
-        resp = client.get_financials(
-            "AAPL", FinancialStatementType.BALANCE_SHEET
-        )
+        resp = client.get_financials("AAPL", FinancialStatementType.BALANCE_SHEET)
 
         assert len(resp.data) == 1
         r = resp.data[0]
@@ -232,9 +236,7 @@ class TestGetFinancials:
 
     @patch("fin_agent.adapters.market_data.yfinance.client.yf.Ticker")
     def test_cashflow_extracts_metrics(self, mock_ticker_cls):
-        mock_ticker_cls.return_value = _mock_ticker(
-            cashflow=_make_cashflow_df()
-        )
+        mock_ticker_cls.return_value = _mock_ticker(cashflow=_make_cashflow_df())
         client = YFinanceClient()
         resp = client.get_financials("AAPL", FinancialStatementType.CASH_FLOW)
 
@@ -245,9 +247,7 @@ class TestGetFinancials:
 
     @patch("fin_agent.adapters.market_data.yfinance.client.yf.Ticker")
     def test_quarterly_frequency(self, mock_ticker_cls):
-        mock_ticker_cls.return_value = _mock_ticker(
-            income_stmt=_make_income_stmt_df()
-        )
+        mock_ticker_cls.return_value = _mock_ticker(income_stmt=_make_income_stmt_df())
         client = YFinanceClient()
         resp = client.get_financials(
             "AAPL",
@@ -262,9 +262,7 @@ class TestGetFinancials:
     def test_empty_statement_returns_empty(self, mock_ticker_cls):
         mock_ticker_cls.return_value = _mock_ticker(income_stmt=pd.DataFrame())
         client = YFinanceClient()
-        resp = client.get_financials(
-            "AAPL", FinancialStatementType.INCOME_STATEMENT
-        )
+        resp = client.get_financials("AAPL", FinancialStatementType.INCOME_STATEMENT)
 
         assert len(resp.data) == 0
 

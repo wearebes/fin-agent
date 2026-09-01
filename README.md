@@ -14,7 +14,17 @@
     - `POST /v1/research/runs`
     - `GET /v1/research/runs/{id}`
     - `GET /v1/research/runs/{id}/trace`
-  - 根路径 `/` 已挂载一个静态单页页面（`static/index.html`）
+    - `POST /v1/quant/forensics/runs`
+  - React 前端包含智能体对话和 Quant Forensics（量化策略法医）工作台
+  - Quant Forensics 使用真实历史收盘价执行滞后一日的模板策略回测，并检查：
+    - 未来数据泄漏
+    - 分段稳定性与过拟合风险
+    - 参数敏感度
+    - 交易成本悬崖
+    - 市场状态依赖
+    - 基准 Beta / Alpha 归因
+  - 当 yfinance crumb 接口被限流时，同一 Yahoo Chart 数据源提供透明降级
+  - LLM 仅解释已经锁定的诊断结果；额度不足或输出不合规时自动使用规则摘要
   - OpenAI LLM 调用（plan / tool-exec / synthesize / review）
   - 搜索 adapter：Exa、Tavily
   - 市场数据 adapter：YFinance、AKShare、FMP，并通过 `MarketDataRouter` 做路由/合并
@@ -28,6 +38,8 @@
   - 机器可读的 tool schema / function-calling 契约
   - review 失败后的自动重试 / 条件分支
   - 长期记忆、向量检索、历史 run 复用
+  - Quant Forensics 暂不接受任意 Python 策略代码，仅支持内置的双均线、突破和均值回归模板
+  - 当前回测基于日线收盘价和简化交易成本，不模拟盘口冲击、停牌、涨跌停或真实成交
 
 ---
 
@@ -178,6 +190,7 @@ pytest
 **`fin-agent api` 启动后：**
 
 - `http://127.0.0.1:8000/` - 静态单页 UI
+- `http://127.0.0.1:8000/#/quant` - Quant Forensics 策略法医
 - `http://127.0.0.1:8000/healthz` - 健康检查
 - `http://127.0.0.1:8000/docs` - Swagger UI（本地环境默认开启）
 

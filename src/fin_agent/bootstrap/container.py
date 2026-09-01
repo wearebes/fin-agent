@@ -14,6 +14,7 @@ from fin_agent.adapters.search.tavily.client import TavilySearchClient
 from fin_agent.bootstrap.settings import AppSettings, collect_runtime_validation_errors
 from fin_agent.domain.constants import SearchProviderName
 from fin_agent.services.auth import AuthConfig, AuthService
+from fin_agent.services.forensics import ForensicsService
 from fin_agent.services.research import ResearchService
 from fin_agent.services.skill_router import SkillDispatcher
 from fin_agent.skills import SkillRegistry
@@ -38,6 +39,7 @@ class Container:
     run_store: RunStore
     user_store: UserStore
     research_service: ResearchService
+    forensics_service: ForensicsService
     auth_service: AuthService
     # Pure-descriptor projection of skill_catalog, consumed only by
     # GET /v1/skills. Intentionally NOT part of StageDeps — no stage browses
@@ -179,6 +181,7 @@ def build_container(settings: AppSettings) -> Container:
             deps=deps,
             skill_dispatcher=skill_dispatcher,
         ),
+        forensics_service=ForensicsService(market_data=market_data, llm=llm),
         auth_service=auth_service,
         skill_registry=skill_catalog.to_registry(),
         skill_catalog=skill_catalog,

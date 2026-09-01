@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fin_agent.bootstrap.container import Container, build_container
 from fin_agent.bootstrap.settings import AppSettings, load_settings
 from fin_agent.interfaces.api.auth_router import build_auth_router
+from fin_agent.interfaces.api.forensics_router import build_forensics_router
 from fin_agent.interfaces.api.router import build_router
 
 
@@ -52,6 +53,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     app.include_router(build_router())
     app.include_router(build_auth_router())
+    app.include_router(build_forensics_router())
 
     project_root = Path(__file__).resolve().parent.parent.parent.parent
     dist_dir = project_root / "frontend" / "dist"
