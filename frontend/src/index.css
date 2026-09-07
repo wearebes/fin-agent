@@ -2059,12 +2059,25 @@ button {
 .qf-legend i { width: 14px; height: 2px; display: inline-block; background: #53606a; }
 .qf-legend i.strategy { background: var(--qf-accent); box-shadow: 0 0 7px rgba(90,200,250,.5); }
 .qf-chart-wrap { position: relative; margin-top: 12px; }
-.qf-chart { width: 100%; height: 250px; overflow: visible; }
+.qf-chart { width: 100%; height: 250px; overflow: visible; touch-action: none; }
 .qf-gridline { stroke: rgba(255,255,255,.055); stroke-width: 1; }
 .qf-line { fill: none; stroke-width: 2.2; vector-effect: non-scaling-stroke; }
 .qf-line-base { stroke: #52616b; }
 .qf-line-strategy { stroke: var(--qf-accent); filter: drop-shadow(0 0 5px rgba(90,200,250,.2)); }
-.qf-chart-axis { position: absolute; inset: 28px auto 23px 3px; display: flex; flex-direction: column-reverse; justify-content: space-between; color: #4e5960; font: 600 .55rem/1 ui-monospace, monospace; }
+.qf-chart-hitbox { fill: transparent; cursor: crosshair; }
+.qf-chart-crosshair line { stroke: rgba(255,255,255,.24); stroke-width: 1; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
+.qf-chart-crosshair circle { stroke: #141722; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.qf-chart-crosshair circle.strategy { fill: var(--qf-accent); }
+.qf-chart-crosshair circle.benchmark { fill: #687784; }
+.qf-chart-axis { position: absolute; inset: 28px auto 23px 3px; display: flex; flex-direction: column-reverse; justify-content: space-between; color: #76818b; font: 600 .55rem/1 ui-monospace, monospace; pointer-events: none; }
+.qf-chart-axis-title { position: absolute; top: 4px; left: 3px; color: #626e78; font: 600 .55rem/1 ui-monospace, monospace; letter-spacing: .06em; pointer-events: none; }
+.qf-chart-tooltip { position: absolute; top: 10px; z-index: 2; min-width: 148px; padding: 10px 11px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; color: #e8edf1; background: rgba(12,14,22,.94); box-shadow: 0 10px 24px rgba(0,0,0,.28); transform: translateX(-50%); pointer-events: none; }
+.qf-chart-tooltip > strong { display: block; margin-bottom: 7px; color: #9ba7b1; font: 650 .62rem/1 ui-monospace, monospace; }
+.qf-chart-tooltip > div { display: flex; justify-content: space-between; gap: 18px; font-size: .66rem; line-height: 1.8; }
+.qf-chart-tooltip span { display: flex; align-items: center; gap: 6px; color: #aeb7bf; }
+.qf-chart-tooltip i { display: inline-block; width: 10px; height: 2px; background: #687784; }
+.qf-chart-tooltip i.strategy { background: var(--qf-accent); }
+.qf-chart-tooltip b { font: 700 .66rem/1.8 ui-monospace, monospace; }
 .qf-narrative { background: linear-gradient(150deg, rgba(90,200,250,.055), rgba(16,21,25,.88) 45%); }
 .qf-ai-tag { display: inline-flex; align-items: center; gap: 7px; padding: 6px 9px; color: var(--qf-accent); background: rgba(90,200,250,.07); border: 1px solid rgba(90,200,250,.16); border-radius: 7px; font-size: .62rem; font-weight: 700; }
 .qf-narrative blockquote { margin: 22px 0 28px; font-size: 1rem; font-weight: 620; line-height: 1.65; letter-spacing: -.02em; }

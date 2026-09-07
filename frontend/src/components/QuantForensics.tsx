@@ -33,7 +33,7 @@ const copy = {
     windows: '参数窗口', fast: '快速', slow: '慢速', run: '开始策略尸检',
     running: '正在获取行情并审计…', presets: '策略模板', introTitle: '检查范围',
     evidenceNames: ['未来数据泄漏', '过拟合', '参数敏感性', '交易成本', '市场状态', 'Alpha 真实性'],
-    reliability: '策略可信度', annualized: '年化收益', drawdown: '最大回撤',
+    reliability: '策略可信度', annualized: '年化收益', drawdown: '最大回撤', chartReturn: '收益率',
     sharpe: '夏普比率', alpha: '年化 Alpha', curve: '净值证据', strategy: '策略',
     base: '基准', checks: '法医检查', sensitivity: '参数敏感度', costs: '成本压力测试',
     regimes: '市场状态归因', aiNote: 'AI 法医摘要', ruleNote: '规则引擎摘要',
@@ -49,7 +49,7 @@ const copy = {
     windows: 'Parameter windows', fast: 'Fast', slow: 'Slow', run: 'Start autopsy',
     running: 'Fetching prices and auditing…', presets: 'Templates', introTitle: 'Audit coverage',
     evidenceNames: ['Leakage', 'Overfitting', 'Sensitivity', 'Costs', 'Regimes', 'Alpha'],
-    reliability: 'Reliability', annualized: 'Annual return', drawdown: 'Max drawdown',
+    reliability: 'Reliability', annualized: 'Annual return', drawdown: 'Max drawdown', chartReturn: 'Return',
     sharpe: 'Sharpe ratio', alpha: 'Annual alpha', curve: 'Equity evidence', strategy: 'Strategy',
     base: 'Benchmark', checks: 'Forensic checks', sensitivity: 'Parameter sensitivity',
     costs: 'Cost stress', regimes: 'Regime attribution', aiNote: 'AI forensic brief',
@@ -84,28 +84,53 @@ function StatusIcon({ check }: { check: AuditCheck }) {
   return <CircleX size={18} />
 }
 
-function EquityChart({ report }: { report: ForensicsReport }) {
+function EquityChart({ report, labels }: { report: ForensicsReport; labels: Labels }) {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const points = useMemo(() => {
     const all = report.equity_curve.flatMap((point) => [point.strategy, point.benchmark])
     const low = Math.min(...all)
     const high = Math.max(...all)
     const span = Math.max(1, high - low)
+    const toY = (value: number) => 225 - ((value - low) / span) * 190
     const map = (key: 'strategy' | 'benchmark') => report.equity_curve.map((point, index) => {
       const x = (index / Math.max(1, report.equity_curve.length - 1)) * 900
-      const y = 225 - ((point[key] - low) / span) * 190
+      const y = toY(point[key])
       return `${x.toFixed(1)},${y.toFixed(1)}`
     }).join(' ')
-    return { strategy: map('strategy'), benchmark: map('benchmark'), min: low, max: high }
+    return { strategy: map('strategy'), benchmark: map('benchmark'), low, high, toY }
   }, [report])
 
+  const baseStrategy = report.equity_curve[0]?.strategy || 1
+  const baseBenchmark = report.equity_curve[0]?.benchmark || 1
+  const hovered = hoverIndex === null ? null : report.equity_curve[hoverIndex]
+  const hoverX = hoverIndex === null ? 0 : (hoverIndex / Math.max(1, report.equity_curve.length - 1)) * 900
+  const updateHover = (clientX: number, element: SVGSVGElement) => {
+    const rect = element.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    setHoverIndex(Math.round(ratio * Math.max(0, report.equity_curve.length - 1)))
+  }
+
   return (
-    <div className="qf-chart-wrap">
-      <svg className="qf-chart" viewBox="0 0 900 250" role="img" aria-label="Strategy and benchmark equity curve">
+    <div className="qf-chart-wrap" onPointerLeave={() => setHoverIndex(null)}>
+      <svg className="qf-chart" viewBox="0 0 900 250" role="img" aria-label="Strategy and benchmark equity curve" onPointerMove={(event) => updateHover(event.clientX, event.currentTarget)}>
         {[35, 82.5, 130, 177.5, 225].map((y) => <line key={y} x1="0" x2="900" y1={y} y2={y} className="qf-gridline" />)}
         <polyline points={points.benchmark} className="qf-line qf-line-base" />
         <polyline points={points.strategy} className="qf-line qf-line-strategy" />
+        {hovered && <g className="qf-chart-crosshair" aria-hidden="true">
+          <line x1={hoverX} x2={hoverX} y1="20" y2="230" />
+          <line x1="0" x2="900" y1={points.toY(hovered.strategy)} y2={points.toY(hovered.strategy)} />
+          <circle cx={hoverX} cy={points.toY(hovered.strategy)} r="4" className="strategy" />
+          <circle cx={hoverX} cy={points.toY(hovered.benchmark)} r="4" className="benchmark" />
+        </g>}
+        <rect className="qf-chart-hitbox" x="0" y="0" width="900" height="250" />
       </svg>
-      <div className="qf-chart-axis"><span>{points.min.toFixed(0)}</span><span>{points.max.toFixed(0)}</span></div>
+      <div className="qf-chart-axis"><span>{formatPct(((points.low / baseStrategy) - 1) * 100)}</span><span>{formatPct(((points.high / baseStrategy) - 1) * 100)}</span></div>
+      <span className="qf-chart-axis-title">{labels.chartReturn}</span>
+      {hovered && <div className="qf-chart-tooltip" style={{ left: `${Math.min(88, Math.max(12, (hoverX / 900) * 100))}%` }}>
+        <strong>{hovered.date}</strong>
+        <div><span><i className="strategy" />{labels.strategy}</span><b>{formatPct(((hovered.strategy / baseStrategy) - 1) * 100)}</b></div>
+        <div><span><i />{labels.base}</span><b>{formatPct(((hovered.benchmark / baseBenchmark) - 1) * 100)}</b></div>
+      </div>}
     </div>
   )
 }
@@ -224,7 +249,7 @@ function Report({ report, lang, labels, view }: { report: ForensicsReport; lang:
     {view === 'backtest' && <>
       <div className="qf-report-head"><div><span>BACKTEST / {report.run_id}</span><h2>{report.ticker} · {report.strategy_label}</h2></div><div>{report.data_start} → {report.data_end}<br />{labels.source}</div></div>
       <div className="qf-metrics">{metrics.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
-      <article className="qf-card qf-equity"><div className="qf-card-title"><div><span>HISTORICAL COMPARISON</span><h3>{labels.curve}</h3></div><div className="qf-legend"><span><i className="strategy" />{labels.strategy}</span><span><i />{labels.base}</span></div></div><EquityChart report={report} /></article>
+      <article className="qf-card qf-equity"><div className="qf-card-title"><div><span>HISTORICAL COMPARISON</span><h3>{labels.curve}</h3></div><div className="qf-legend"><span><i className="strategy" />{labels.strategy}</span><span><i />{labels.base}</span></div></div><EquityChart report={report} labels={labels} /></article>
     </>}
     {view === 'forensics' && <>
       <article className="qf-card qf-narrative"><div className="qf-ai-tag"><Sparkles size={14} />{report.narrative.generated_by_ai ? labels.aiNote : labels.ruleNote}</div><blockquote>{report.narrative.summary}</blockquote><div><span>{labels.primary}</span><p>{report.narrative.primary_cause}</p></div><div><span>{labels.repair}</span><p>{report.narrative.repair_action}</p></div></article>
