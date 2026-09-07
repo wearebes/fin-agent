@@ -21,11 +21,7 @@ export default function QuantView() {
         <details className="quant-workbench">
           <summary>
             <span className="quant-workbench-icon"><FlaskConical size={22} /></span>
-            <span className="quant-workbench-copy">
-              <span className="quant-workbench-label">{t('quantWorkspaceKicker')}</span>
-              <strong>{t('quantWorkspaceTitle')}</strong>
-              <span className="quant-workbench-desc">{t('quantWorkspaceDesc')}</span>
-            </span>
+            <strong className="quant-workbench-title">{t('quantWorkspaceTitle')}</strong>
             <span className="quant-workbench-toggle">
               <span className="quant-workbench-expand">{t('quantWorkspaceExpand')}</span>
               <span className="quant-workbench-collapse">{t('quantWorkspaceCollapse')}</span>

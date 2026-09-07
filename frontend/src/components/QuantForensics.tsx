@@ -28,14 +28,11 @@ const copy = {
     eyebrow: '策略法医',
     tabSetup: '策略设置', tabBacktest: '回测对比', tabForensics: '策略法医',
     backtestEmpty: '先完成策略设置并运行回测。', forensicsEmpty: '先运行回测，策略法医才有证据可检查。',
-    desc: '用真实历史行情检查未来数据泄漏、过拟合、参数脆弱性、交易成本、市场状态依赖与伪 Alpha。',
-    guardrail: 'AI 只解释证据，不改写回测数字', configure: '送检策略',
-    configureDesc: '选择一个可复现策略模板，设定参数后启动完整审计。',
+    configure: '策略设置',
     ticker: '标的代码', benchmark: '基准', period: '历史区间', cost: '单边交易成本',
     windows: '参数窗口', fast: '快速', slow: '慢速', run: '开始策略尸检',
     running: '正在获取行情并审计…', presets: '策略模板', introTitle: '检查范围',
     evidenceNames: ['未来数据泄漏', '过拟合', '参数敏感性', '交易成本', '市场状态', 'Alpha 真实性'],
-    introDesc: '系统使用滞后一日的信号执行回测，并用锁定规则完成诊断。最终输出不是买卖建议，而是一份可复核的策略可靠性报告。',
     reliability: '策略可信度', annualized: '年化收益', drawdown: '最大回撤',
     sharpe: '夏普比率', alpha: '年化 Alpha', curve: '净值证据', strategy: '策略',
     base: '基准', checks: '法医检查', sensitivity: '参数敏感度', costs: '成本压力测试',
@@ -47,14 +44,11 @@ const copy = {
     eyebrow: 'Quant Forensics',
     tabSetup: 'Strategy setup', tabBacktest: 'Backtest comparison', tabForensics: 'Strategy forensics',
     backtestEmpty: 'Set up a strategy and run a backtest first.', forensicsEmpty: 'Run a backtest first so the forensic checks have evidence.',
-    desc: 'Audit look-ahead leakage, overfitting, parameter fragility, costs, regime dependence, and false alpha on real historical prices.',
-    guardrail: 'AI explains evidence; it cannot rewrite backtest numbers', configure: 'Submit a strategy',
-    configureDesc: 'Pick a reproducible template, set its parameters, and run the locked audit.',
+    configure: 'Strategy setup',
     ticker: 'Ticker', benchmark: 'Benchmark', period: 'History', cost: 'One-way cost',
     windows: 'Parameter windows', fast: 'Fast', slow: 'Slow', run: 'Start autopsy',
     running: 'Fetching prices and auditing…', presets: 'Templates', introTitle: 'Audit coverage',
     evidenceNames: ['Leakage', 'Overfitting', 'Sensitivity', 'Costs', 'Regimes', 'Alpha'],
-    introDesc: 'Signals are lagged by one session and every diagnosis follows locked rules. The output is an inspectable reliability report, not trading advice.',
     reliability: 'Reliability', annualized: 'Annual return', drawdown: 'Max drawdown',
     sharpe: 'Sharpe ratio', alpha: 'Annual alpha', curve: 'Equity evidence', strategy: 'Strategy',
     base: 'Benchmark', checks: 'Forensic checks', sensitivity: 'Parameter sensitivity',
@@ -161,7 +155,7 @@ export default function QuantWorkbench() {
 
       {activeTab === 'setup' && <section className="qf-shell" role="tabpanel">
         <form className="qf-panel qf-form" onSubmit={submit}>
-          <div className="qf-panel-heading"><div><span>01 / INTAKE</span><h2>{labels.configure}</h2><p>{labels.configureDesc}</p></div><FlaskConical size={24} /></div>
+          <div className="qf-panel-heading"><h2>{labels.configure}</h2><FlaskConical size={24} /></div>
           <label className="qf-label">{labels.presets}</label>
           <div className="qf-template-grid">
             {templates.map((template) => <button type="button" key={template.kind} onClick={() => selectTemplate(template.kind)} className={form.strategy === template.kind ? 'active' : ''}><Activity size={16} /><span>{template[lang]}</span></button>)}
@@ -206,12 +200,9 @@ function Intro({ labels }: { labels: Labels }) {
   return (
     <div className="qf-panel qf-intro">
       <h2>{labels.introTitle}</h2>
-      <p>{labels.desc}</p>
       <div className="qf-intro-list">
         {labels.evidenceNames.map((item) => <div key={item}><CheckCircle2 size={14} />{item}</div>)}
       </div>
-      <p>{labels.introDesc}</p>
-      <p className="qf-note"><ShieldCheck size={16} />{labels.guardrail}</p>
     </div>
   )
 }

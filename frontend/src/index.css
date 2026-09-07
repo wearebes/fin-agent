@@ -1946,10 +1946,7 @@ button {
   color: var(--green);
   background: rgba(48, 209, 88, .08);
 }
-.quant-workbench-copy { display: flex; flex: 1; flex-direction: column; gap: 7px; min-width: 0; }
-.quant-workbench-label { color: var(--green); font-size: .65rem; }
-.quant-workbench-copy strong { color: #fff; font-size: .94rem; font-weight: 700; }
-.quant-workbench-desc { color: rgba(255, 255, 255, .4); font-size: .76rem; line-height: 1.55; }
+.quant-workbench-title { flex: 1; color: #fff; font-size: .94rem; font-weight: 700; }
 .quant-workbench-toggle { display: flex; align-items: center; gap: 8px; color: var(--green); font-size: .72rem; white-space: nowrap; }
 .quant-workbench-toggle svg { transition: transform .2s ease; }
 .quant-workbench-collapse, .quant-workbench[open] .quant-workbench-expand { display: none; }
@@ -2130,7 +2127,6 @@ button {
   .user-btn { padding: 6px 8px; }
   .quant-workbench > summary { flex-wrap: wrap; gap: 12px; padding: 20px; }
   .quant-workbench-icon { display: none; }
-  .quant-workbench-copy { flex-basis: 100%; }
   .qf-tabs { width: 100%; justify-content: center; }
   .qf-tabs button { flex: 1; padding-inline: 7px; }
   .qf-page { padding: 18px 0 0; }

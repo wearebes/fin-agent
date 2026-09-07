@@ -64,12 +64,10 @@ export const D: Dict = {
   // quant
   quantTitle: { zh: '量化金融', en: 'Quant Finance' },
   quantDesc: {
-    zh: '从策略配置到可靠性验证的量化研究工作台。',
-    en: 'A quantitative research workbench from strategy setup to reliability checks.',
+    zh: '把每一条收益曲线，都还原成证据。',
+    en: 'Turn every return curve back into evidence.',
   },
-  quantWorkspaceKicker: { zh: '量化研究工作台', en: 'Quant Research Workbench' },
-  quantWorkspaceTitle: { zh: '同一份策略，从配置到验证', en: 'One strategy, from setup to validation' },
-  quantWorkspaceDesc: { zh: '策略设置 · 回测对比 · 策略法医', en: 'Strategy setup · Backtest comparison · Strategy forensics' },
+  quantWorkspaceTitle: { zh: '量化研究工作台', en: 'Quant Research Workbench' },
   quantWorkspaceExpand: { zh: '进入工作台', en: 'Open workbench' },
   quantWorkspaceCollapse: { zh: '收起工作台', en: 'Collapse workbench' },
 
