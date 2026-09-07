@@ -163,6 +163,12 @@ npm run dev          # 开发模式，监听 http://localhost:5173
 
 ## 日常使用
 
+### 本地个人版首次使用
+
+双击桌面启动入口后，未配置的副本会先显示“接入你自己的 API”页面。填入自己的 OpenAI API Key（或兼容接口地址与模型）并保存即可开始使用；密钥只保存在该副本目录的 `.env`，不会上传到 FinAgent。
+
+聊天项目、会话和消息会同时保存在浏览器与本机 `var/fin_agent-local.db`。默认账号库也使用 SQLite，因此重启 FinAgent 后本地登录信息仍会保留。不要把 `.env` 或 `var/` 文件夹分享给他人。
+
 ```bash
 # 执行一次研究工作流
 fin-agent research run --question "Summarize AAPL positioning" --ticker AAPL

@@ -2123,6 +2123,21 @@ button {
 .qf-regimes small { color: #4f5a61; font-size: .54rem; }
 .qf-disclaimer { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 42px; color: #515c63; font-size: .65rem; text-align: center; }
 
+.local-setup { min-height: 100vh; display: grid; place-items: center; padding: 28px; color: #eef4f5; background: radial-gradient(circle at 20% 15%, rgba(74, 180, 255, .16), transparent 28%), radial-gradient(circle at 85% 80%, rgba(48, 209, 88, .12), transparent 24%), #080b14; }
+.local-setup-card { width: min(440px, 100%); padding: 34px; border: 1px solid rgba(255,255,255,.1); border-radius: 20px; background: rgba(19, 23, 36, .9); box-shadow: 0 24px 80px rgba(0,0,0,.38); }
+.local-setup-icon { width: 48px; height: 48px; display: grid; place-items: center; margin-bottom: 18px; border-radius: 13px; color: #5ac8fa; background: rgba(90,200,250,.12); }
+.local-setup-card > span { color: #7d8791; font: 700 .62rem/1 ui-monospace, monospace; letter-spacing: .13em; }
+.local-setup-card h1 { margin: 9px 0 10px; font-size: 1.7rem; letter-spacing: -.04em; }
+.local-setup-card > p { margin: 0 0 26px; color: #9ba7b1; font-size: .82rem; line-height: 1.65; }
+.local-setup form { display: grid; gap: 15px; }
+.local-setup label { display: grid; gap: 7px; color: #aeb8c1; font-size: .72rem; font-weight: 650; }
+.local-setup input { width: 100%; height: 43px; padding: 0 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 9px; outline: none; color: #eff5f8; background: rgba(0,0,0,.22); font-size: .8rem; }
+.local-setup input:focus { border-color: rgba(90,200,250,.65); box-shadow: 0 0 0 3px rgba(90,200,250,.08); }
+.local-setup form button { height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 5px; border-radius: 9px; color: #fff; background: linear-gradient(120deg, #248b4d, #2877a5); font-size: .8rem; font-weight: 750; }
+.local-setup form button:disabled { opacity: .6; cursor: wait; }
+.local-setup-error { margin: -4px 0 0; color: #ff938d; font-size: .72rem; }
+.local-setup small { display: flex; align-items: flex-start; gap: 6px; margin-top: 18px; color: #6f7a84; font-size: .67rem; line-height: 1.5; }
+
 @media (max-width: 960px) {
   .qf-shell, .qf-report-grid { grid-template-columns: 1fr; }
   .qf-check-grid { grid-template-columns: repeat(2, 1fr); }

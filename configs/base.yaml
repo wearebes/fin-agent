@@ -5,6 +5,7 @@ logging:
   level: INFO
   json: false
 database:
+  backend: sql
   url: sqlite:///./var/fin_agent.db
   echo: false
 runtime:

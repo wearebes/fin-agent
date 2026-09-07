@@ -48,6 +48,17 @@ export interface NewMessage {
   error?: string
 }
 
+export interface WorkspaceSnapshot {
+  projects: Project[]
+  sessions: Session[]
+  messages: Message[]
+  currentProjectId: string | null
+  currentSessionId: string | null
+  lang: Lang
+  showThinking: boolean
+  planMode: boolean
+}
+
 interface WorkspaceState {
   projects: Project[]
   sessions: Session[]
@@ -72,6 +83,7 @@ interface WorkspaceState {
   setLang: (lang: Lang) => void
   setShowThinking: (v: boolean) => void
   setPlanMode: (v: boolean) => void
+  replaceWorkspace: (snapshot: WorkspaceSnapshot) => void
 }
 
 const uid = (): string =>
@@ -290,6 +302,16 @@ export const useWorkspace = create<WorkspaceState>()(
 
       setShowThinking: (v) => set({ showThinking: v }),
       setPlanMode: (v) => set({ planMode: v }),
+      replaceWorkspace: (snapshot) => set({
+        projects: Array.isArray(snapshot.projects) ? snapshot.projects : [],
+        sessions: Array.isArray(snapshot.sessions) ? snapshot.sessions : [],
+        messages: Array.isArray(snapshot.messages) ? snapshot.messages : [],
+        currentProjectId: snapshot.currentProjectId ?? null,
+        currentSessionId: snapshot.currentSessionId ?? null,
+        lang: snapshot.lang === 'en' ? 'en' : 'zh',
+        showThinking: Boolean(snapshot.showThinking),
+        planMode: Boolean(snapshot.planMode),
+      }),
     }),
     {
       name: 'fin-agent-workspace-v1',

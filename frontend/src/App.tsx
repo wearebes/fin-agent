@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import TopBar from './components/TopBar'
 import ChatWorkspace from './components/ChatWorkspace'
@@ -9,6 +9,9 @@ import RegisterPage from './components/user/RegisterPage'
 import ProfilePage from './components/user/ProfilePage'
 import PasswordPage from './components/user/PasswordPage'
 import SkillsPage from './components/user/SkillsPage'
+import LocalSetupPage from './components/LocalSetupPage'
+import LocalWorkspaceSync from './components/LocalWorkspaceSync'
+import { getLocalSetupStatus, type LocalSetupStatus } from './api/local'
 import { useWorkspace } from './store/workspace'
 
 export default function App() {
@@ -16,13 +19,25 @@ export default function App() {
   const location = useLocation()
   const isQuant = location.pathname.startsWith('/quant')
   const isUser = location.pathname.startsWith('/user')
+  const [setup, setSetup] = useState<LocalSetupStatus | null>(null)
 
   useEffect(() => {
     ensureDefaults()
   }, [ensureDefaults])
 
+  useEffect(() => {
+    void getLocalSetupStatus().then(setSetup).catch(() => {
+      // Keep the existing app reachable if an older local backend is still starting.
+      setSetup({ configured: true, workspace_persistent: false, auth_persistent: false })
+    })
+  }, [])
+
+  if (!setup) return null
+  if (!setup.configured) return <LocalSetupPage onComplete={() => setSetup({ ...setup, configured: true, auth_persistent: true })} />
+
   return (
     <div className={`app ${isQuant ? 'theme-dark' : 'theme-light'}`}>
+      <LocalWorkspaceSync />
       <TopBar isQuant={isQuant} isUser={isUser} />
       <Routes>
         <Route path="/" element={<Navigate to="/chat" replace />} />

@@ -104,18 +104,29 @@ def _to_openai_tool(tool: ToolDefinition) -> dict[str, Any]:
 class OpenAIClient:
     def __init__(self, config: OpenAIConfig | None = None) -> None:
         self._config = config or OpenAIConfig()
+        self._client = self._make_client(self._config)
+
+    @staticmethod
+    def _make_client(config: OpenAIConfig) -> AsyncOpenAI | None:
         api_key = (
-            self._config.api_key.get_secret_value()
-            if self._config.api_key is not None
+            config.api_key.get_secret_value()
+            if config.api_key is not None
             else None
         )
+        if not api_key:
+            return None
         kwargs: dict[str, Any] = {
             "api_key": api_key,
-            "timeout": self._config.timeout_seconds,
+            "timeout": config.timeout_seconds,
         }
-        if self._config.base_url is not None:
-            kwargs["base_url"] = self._config.base_url
-        self._client = AsyncOpenAI(**kwargs)
+        if config.base_url is not None:
+            kwargs["base_url"] = config.base_url
+        return AsyncOpenAI(**kwargs)
+
+    def reconfigure(self, config: OpenAIConfig) -> None:
+        """Apply a locally saved provider configuration without revealing its secret."""
+        self._config = config
+        self._client = self._make_client(config)
 
     async def chat(
         self,
@@ -130,6 +141,9 @@ class OpenAIClient:
             message=LLMMessage(role="assistant", content=""),
             model=self._config.model,
         )
+        if self._client is None:
+            logger.warning("chat skipped because no local OpenAI API key is configured")
+            return empty
         try:
             openai_messages = [_to_openai_message(m) for m in messages]
             create_kwargs: dict[str, Any] = {

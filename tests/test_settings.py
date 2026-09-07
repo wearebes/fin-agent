@@ -65,3 +65,20 @@ def test_api_and_cli_read_the_same_settings(monkeypatch) -> None:
         doctor_report["providers"]
         == app_settings.providers.default_selection.model_dump(mode="json")
     )
+
+
+def test_local_app_starts_without_an_api_key(tmp_path) -> None:
+    from fin_agent.bootstrap.app import create_app
+    from fin_agent.bootstrap.settings import AppSettings
+
+    settings = AppSettings(
+        app={"environment": "local"},
+        database={"backend": "sql", "url": f"sqlite:///{tmp_path / 'local.db'}"},
+        openai={"api_key": None},
+    )
+    app = create_app(settings)
+    with TestClient(app) as client:
+        response = client.get("/v1/local/setup/status")
+
+    assert response.status_code == 200
+    assert response.json()["configured"] is False

@@ -51,7 +51,7 @@ class LoggingConfig(BaseModel):
 
 class DatabaseConfig(BaseModel):
     backend: str = Field(
-        default="memory",
+        default="sql",
         description="Storage backend: 'memory' for InMemoryRunStore, 'sql' for SQLAlchemyRunStore.",
     )
     url: str = Field(
@@ -328,6 +328,7 @@ def collect_runtime_validation_errors(settings: AppSettings) -> list[str]:
         if (
             settings.providers.default_selection.llm == LLMProviderName.OPENAI
             and not _secret_is_set(settings.openai.api_key)
+            and settings.app.environment != EnvironmentName.LOCAL
         ):
             errors.append('FIN_AGENT__OPENAI__API_KEY is required for the default OpenAI provider.')
     if not settings.database.url.strip():

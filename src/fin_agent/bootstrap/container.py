@@ -36,6 +36,7 @@ class RuntimeSettingsError(RuntimeError):
 @dataclass(slots=True)
 class Container:
     settings: AppSettings
+    llm: OpenAIClient
     run_store: RunStore
     user_store: UserStore
     research_service: ResearchService
@@ -172,6 +173,7 @@ def build_container(settings: AppSettings) -> Container:
 
     return Container(
         settings=settings,
+        llm=llm,
         run_store=run_store,
         user_store=user_store,
         research_service=ResearchService(
