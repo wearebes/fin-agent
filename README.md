@@ -15,7 +15,7 @@
     - `GET /v1/research/runs/{id}`
     - `GET /v1/research/runs/{id}/trace`
     - `POST /v1/quant/forensics/runs`
-  - React 前端包含智能体对话和 Quant Forensics（量化策略法医）工作台
+  - React 前端保留智能体对话与星空风格量化金融界面，并将策略设置、回测对比与 Quant Forensics（量化策略法医）整合为一个量化研究工作台
   - Quant Forensics 使用真实历史收盘价执行滞后一日的模板策略回测，并检查：
     - 未来数据泄漏
     - 分段稳定性与过拟合风险
@@ -190,7 +190,7 @@ pytest
 **`fin-agent api` 启动后：**
 
 - `http://127.0.0.1:8000/` - 静态单页 UI
-- `http://127.0.0.1:8000/#/quant` - Quant Forensics 策略法医
+- `http://127.0.0.1:8000/#/quant` - 量化金融；展开量化研究工作台，可在策略设置、回测对比和策略法医之间切换，收起时保留本页表单和报告
 - `http://127.0.0.1:8000/healthz` - 健康检查
 - `http://127.0.0.1:8000/docs` - Swagger UI（本地环境默认开启）
 

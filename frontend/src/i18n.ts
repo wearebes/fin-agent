@@ -64,30 +64,14 @@ export const D: Dict = {
   // quant
   quantTitle: { zh: '量化金融', en: 'Quant Finance' },
   quantDesc: {
-    zh: '策略回测、模型调试、模拟交易与实盘对接，一站式量化研发平台。',
-    en: 'Strategy backtesting, model debugging, paper trading, and live execution.',
+    zh: '从策略配置到可靠性验证的量化研究工作台。',
+    en: 'A quantitative research workbench from strategy setup to reliability checks.',
   },
-  qBacktest: { zh: '策略回测', en: 'Strategy Backtest' },
-  qBacktestD: {
-    zh: '基于历史数据验证策略表现，支持多因子模型与自定义指标',
-    en: 'Validate strategy performance on historical data with multi-factor models',
-  },
-  qModel: { zh: '模型调试', en: 'Model Debug' },
-  qModelD: {
-    zh: '参数调优、过拟合检测与模型诊断，快速迭代策略逻辑',
-    en: 'Parameter tuning, overfit detection, and model diagnostics',
-  },
-  qPaper: { zh: '模拟交易', en: 'Paper Trading' },
-  qPaperD: {
-    zh: '零资金风险的策略模拟运行，实时跟踪虚拟持仓表现',
-    en: 'Risk-free strategy simulation with real-time virtual portfolio tracking',
-  },
-  qLive: { zh: '实盘对接', en: 'Live Execution' },
-  qLiveD: {
-    zh: '信号生成与交易执行对接，支持主流券商 API',
-    en: 'Signal generation and execution via major broker APIs',
-  },
-  soon: { zh: '即将上线', en: 'Coming Soon' },
+  quantWorkspaceKicker: { zh: '量化研究工作台', en: 'Quant Research Workbench' },
+  quantWorkspaceTitle: { zh: '同一份策略，从配置到验证', en: 'One strategy, from setup to validation' },
+  quantWorkspaceDesc: { zh: '策略设置 · 回测对比 · 策略法医', en: 'Strategy setup · Backtest comparison · Strategy forensics' },
+  quantWorkspaceExpand: { zh: '进入工作台', en: 'Open workbench' },
+  quantWorkspaceCollapse: { zh: '收起工作台', en: 'Collapse workbench' },
 
   // research process panel
   researchProcess: { zh: '研究过程', en: 'Research process' },
