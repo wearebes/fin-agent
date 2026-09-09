@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+# Kept as compatibility exports for existing workflow consumers.
 from fin_agent.domain.types import (
     EvidenceItem,
     FinancialsPlanItem,
@@ -13,6 +14,18 @@ from fin_agent.domain.types import (
     SearchPlanItem,
     TraceRecord,
 )
+
+__all__ = [
+    "EvidenceItem",
+    "FinancialsPlanItem",
+    "MarketDataPlanItem",
+    "ResearchContext",
+    "ResearchRequest",
+    "RetrievalPlan",
+    "SearchPlanItem",
+    "ToolCallRecord",
+    "TraceRecord",
+]
 
 
 class ToolCallRecord(BaseModel):

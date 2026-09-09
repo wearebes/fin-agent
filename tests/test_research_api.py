@@ -34,7 +34,9 @@ def _mock_llm_chat(*args, **kwargs):
     if call_count == 0:
         return LLMResponse(message=LLMMessage(role="assistant", content=plan_json))
     if call_count == 1:
-        return LLMResponse(message=LLMMessage(role="assistant", content="Sufficient evidence gathered."))
+        return LLMResponse(
+            message=LLMMessage(role="assistant", content="Sufficient evidence gathered.")
+        )
     if call_count == 2:
         return LLMResponse(
             message=LLMMessage(role="assistant", content="# Test Report\nSynthesis.")
@@ -65,7 +67,9 @@ def _mock_llm_chat_with_tickers(*args, **kwargs):
     if call_count == 0:
         return LLMResponse(message=LLMMessage(role="assistant", content=plan_json))
     if call_count == 1:
-        return LLMResponse(message=LLMMessage(role="assistant", content="Sufficient evidence gathered."))
+        return LLMResponse(
+            message=LLMMessage(role="assistant", content="Sufficient evidence gathered.")
+        )
     if call_count == 2:
         return LLMResponse(
             message=LLMMessage(role="assistant", content="# Test Report\nSynthesis.")

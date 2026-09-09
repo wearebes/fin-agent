@@ -94,7 +94,7 @@ def build_auth_router() -> APIRouter:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=str(e),
-            )
+            ) from e
         return TokenResponse(access_token=token, user=_user_to_response(user))
 
     @router.post("/v1/auth/login", response_model=TokenResponse, tags=["auth"])
@@ -109,7 +109,7 @@ def build_auth_router() -> APIRouter:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=str(e),
-            )
+            ) from e
         return TokenResponse(access_token=token, user=_user_to_response(user))
 
     @router.get("/v1/auth/me", response_model=UserResponse, tags=["auth"])
@@ -122,7 +122,7 @@ def build_auth_router() -> APIRouter:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=str(e),
-            )
+            ) from e
         return _user_to_response(user)
 
     @router.patch("/v1/auth/profile", response_model=UserResponse, tags=["auth"])
@@ -140,7 +140,7 @@ def build_auth_router() -> APIRouter:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=str(e),
-            )
+            ) from e
         return _user_to_response(user)
 
     @router.post("/v1/auth/change-password", tags=["auth"])
@@ -158,7 +158,7 @@ def build_auth_router() -> APIRouter:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(e),
-            )
+            ) from e
         return {"detail": "Password changed successfully"}
 
     return router

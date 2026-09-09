@@ -23,7 +23,9 @@ class ExaSearchClient:
             self._exa = Exa(api_key=api_key)
         else:
             self._exa = None
-            logger.warning("ExaSearchClient: no API key configured, search will return empty results")
+            logger.warning(
+                "ExaSearchClient: no API key configured, search will return empty results"
+            )
 
     def search(
         self,

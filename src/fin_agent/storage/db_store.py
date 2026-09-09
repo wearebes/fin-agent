@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Sequence
+from collections.abc import Sequence
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session

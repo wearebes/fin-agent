@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from fin_agent.domain.constants import EnvironmentName, RunStatus

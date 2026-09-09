@@ -19,7 +19,6 @@ from fin_agent.adapters.llm.openai.config import OpenAIConfig
 from fin_agent.services.auth import AuthService
 from fin_agent.storage.user_store import SQLAlchemyUserStore
 
-
 _PROJECT_ROOT = Path(__file__).resolve().parents[4]
 _ENV_PATH = _PROJECT_ROOT / ".env"
 _LOCAL_DB_PATH = _PROJECT_ROOT / "var" / "fin_agent-local.db"
@@ -166,8 +165,10 @@ def build_local_router() -> APIRouter:
             )
         with _workspace_connection() as connection:
             connection.execute(
-                """INSERT INTO local_workspace (id, payload, updated_at) VALUES (1, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, updated_at=CURRENT_TIMESTAMP""",
+                "INSERT INTO local_workspace (id, payload, updated_at) "
+                "VALUES (1, ?, CURRENT_TIMESTAMP) "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "payload=excluded.payload, updated_at=CURRENT_TIMESTAMP",
                 (serialized,),
             )
         return body

@@ -262,7 +262,9 @@ class TestGetCompanyInfoFusion:
         MockAK.return_value = ak_instance
         MockYF.return_value = yf_instance
 
-        yf_instance.get_company_info.return_value = _company_info("AAPL", "Apple Inc.", "Technology")
+        yf_instance.get_company_info.return_value = _company_info(
+            "AAPL", "Apple Inc.", "Technology"
+        )
 
         router = MarketDataRouter()
         info = router.get_company_info("AAPL")

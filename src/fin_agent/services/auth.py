@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import jwt
@@ -112,7 +112,7 @@ class AuthService:
         return self._store.update_password(user_id, hashed)
 
     def _create_token(self, user: UserInfo) -> str:
-        expire = datetime.now(timezone.utc) + timedelta(
+        expire = datetime.now(UTC) + timedelta(
             minutes=self._config.access_token_expire_minutes
         )
         payload = {
@@ -129,7 +129,7 @@ class AuthService:
                 self._config.secret_key,
                 algorithms=[self._config.algorithm],
             )
-        except jwt.ExpiredSignatureError:
-            raise ValueError("Token has expired")
-        except jwt.InvalidTokenError:
-            raise ValueError("Invalid token")
+        except jwt.ExpiredSignatureError as exc:
+            raise ValueError("Token has expired") from exc
+        except jwt.InvalidTokenError as exc:
+            raise ValueError("Invalid token") from exc

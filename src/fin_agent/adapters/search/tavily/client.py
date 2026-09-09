@@ -23,7 +23,9 @@ class TavilySearchClient:
             self._client = TavilyClient(api_key=api_key)
         else:
             self._client = None
-            logger.warning("TavilySearchClient: no API key configured, search will return empty results")
+            logger.warning(
+                "TavilySearchClient: no API key configured, search will return empty results"
+            )
 
     def search(
         self,

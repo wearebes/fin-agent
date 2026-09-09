@@ -93,7 +93,12 @@ class FMPClient:
                     volume=int(item.get("volume", 0) or 0),
                 )
             )
-        return MarketDataResponse(ticker=ticker, asset_type=asset_type, frequency=frequency, data=points)
+        return MarketDataResponse(
+            ticker=ticker,
+            asset_type=asset_type,
+            frequency=frequency,
+            data=points,
+        )
 
     def _crypto_history(
         self, ticker: str, start: date, end: date, empty: MarketDataResponse
@@ -119,7 +124,12 @@ class FMPClient:
                     volume=int(item.get("volume", 0) or 0),
                 )
             )
-        return MarketDataResponse(ticker=ticker, asset_type=AssetType.CRYPTO, frequency=empty.frequency, data=points)
+        return MarketDataResponse(
+            ticker=ticker,
+            asset_type=AssetType.CRYPTO,
+            frequency=empty.frequency,
+            data=points,
+        )
 
     def get_financials(
         self,
