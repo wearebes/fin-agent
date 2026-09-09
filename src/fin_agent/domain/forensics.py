@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class StrategyKind(StrEnum):
@@ -33,7 +33,7 @@ class AuditStatus(StrEnum):
 
 class ForensicsRequest(BaseModel):
     ticker: str = Field(default="SPY", min_length=1, max_length=24)
-    benchmark: str = Field(default="SPY", min_length=1, max_length=24)
+    benchmark: str | None = Field(default=None, min_length=1, max_length=24)
     period: str = Field(default="5y", pattern=r"^(1y|2y|5y|10y)$")
     strategy: StrategyKind = StrategyKind.MA_CROSS
     fast_window: int = Field(default=20, ge=3, le=120)
@@ -44,6 +44,14 @@ class ForensicsRequest(BaseModel):
     strategy_name: str = Field(default="", max_length=40)
     transaction_cost_bps: float = Field(default=8.0, ge=0, le=100)
     lang: str = Field(default="zh", pattern=r"^(zh|en)$")
+
+    @field_validator("benchmark", mode="before")
+    @classmethod
+    def normalize_optional_benchmark(cls, value: object) -> object:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
 
     @model_validator(mode="after")
     def validate_windows(self) -> ForensicsRequest:
@@ -60,7 +68,7 @@ class ForensicsRequest(BaseModel):
 class EquityPoint(BaseModel):
     date: date
     strategy: float
-    benchmark: float
+    benchmark: float | None = None
 
 
 class PerformanceMetrics(BaseModel):
@@ -71,8 +79,8 @@ class PerformanceMetrics(BaseModel):
     max_drawdown_pct: float
     win_rate_pct: float
     trade_count: int
-    beta: float
-    alpha_pct: float
+    beta: float | None = None
+    alpha_pct: float | None = None
 
 
 class AuditCheck(BaseModel):
@@ -113,7 +121,7 @@ class ForensicsReport(BaseModel):
     run_id: str
     created_at: str
     ticker: str
-    benchmark: str
+    benchmark: str | None = None
     period: str
     strategy: StrategyKind
     strategy_label: str
@@ -123,7 +131,7 @@ class ForensicsReport(BaseModel):
     reliability_score: int = Field(ge=0, le=100)
     verdict: str
     metrics: PerformanceMetrics
-    benchmark_return_pct: float
+    benchmark_return_pct: float | None = None
     checks: list[AuditCheck]
     sensitivity: list[SensitivityPoint]
     cost_scenarios: list[CostScenario]

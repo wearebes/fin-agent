@@ -168,6 +168,26 @@ class TestGetMarketDataRouting:
 
     @patch("fin_agent.adapters.market_data.router.YFinanceClient")
     @patch("fin_agent.adapters.market_data.router.AKShareClient")
+    def test_star_50_index_yahoo_fallback_uses_shanghai_suffix(self, MockAK, MockYF):
+        ak_instance = MagicMock()
+        yf_instance = MagicMock()
+        MockAK.return_value = ak_instance
+        MockYF.return_value = yf_instance
+        ak_instance.get_market_data.return_value = _empty_market_resp("000688")
+        yf_instance.get_market_data.return_value = _market_resp("000688.SS", "yf")
+
+        router = MarketDataRouter()
+        router.get_market_data("000688", AssetType.STOCK)
+
+        yf_instance.get_market_data.assert_called_once_with(
+            "000688.SS",
+            AssetType.STOCK,
+            frequency=DataFrequency.DAILY,
+            period=None,
+        )
+
+    @patch("fin_agent.adapters.market_data.router.YFinanceClient")
+    @patch("fin_agent.adapters.market_data.router.AKShareClient")
     def test_non_a_share_does_not_fall_back_to_akshare(self, MockAK, MockYF):
         ak_instance = MagicMock()
         yf_instance = MagicMock()

@@ -157,6 +157,21 @@ async def test_llm_can_only_replace_narrative() -> None:
 
 
 @pytest.mark.asyncio
+async def test_forensics_without_benchmark_keeps_absolute_strategy_evaluation() -> None:
+    report = await ForensicsService(FakeMarketData()).diagnose(
+        ForensicsRequest(ticker="TEST", benchmark="")
+    )
+
+    assert report.benchmark is None
+    assert report.benchmark_return_pct is None
+    assert report.metrics.beta is None
+    assert report.metrics.alpha_pct is None
+    assert len(report.checks) == 5
+    assert "attribution" not in {check.key for check in report.checks}
+    assert all(point.benchmark is None for point in report.equity_curve)
+
+
+@pytest.mark.asyncio
 async def test_short_history_is_rejected() -> None:
     service = ForensicsService(ShortMarketData())
     with pytest.raises(NoMarketDataError, match="Not enough aligned history"):
@@ -196,6 +211,17 @@ def test_forensics_api_returns_report() -> None:
     payload = response.json()
     assert payload["ticker"] == "TEST"
     assert len(payload["checks"]) == 6
+
+
+def test_forensics_api_accepts_an_empty_optional_benchmark() -> None:
+    with TestClient(_api(ForensicsService(FakeMarketData()))) as client:
+        response = client.post(
+            "/v1/quant/forensics/runs",
+            json={"ticker": "TEST", "benchmark": "", "period": "2y"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["benchmark"] is None
 
 
 def test_forensics_api_explains_missing_history() -> None:

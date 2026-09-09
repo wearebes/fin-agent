@@ -31,7 +31,7 @@ const copy = {
     tabSetup: '策略配置', tabBacktest: '回测对比', tabForensics: '策略评估',
     backtestEmpty: '请先完成策略配置并运行回测。', forensicsEmpty: '请先运行回测，策略评估才有证据可检查。',
     configure: '策略配置',
-    ticker: '标的代码', benchmark: '基准', period: '历史区间', cost: '单边交易成本',
+    ticker: '标的代码', benchmark: '基准（可选）', period: '历史区间', cost: '单边交易成本',
     windows: '参数窗口', fast: '快速', slow: '慢速', run: '开始回测分析',
     running: '正在获取行情并审计…', presets: '策略模板', introTitle: '检查范围',
     evidenceNames: ['未来数据泄漏', '过拟合', '参数敏感性', '交易成本', '市场状态', 'Alpha 真实性'],
@@ -52,7 +52,7 @@ const copy = {
       trigger: '查看代码格式说明', close: '收起说明', title: '代码怎么填？',
       aShare: 'A 股直接填 6 位数字：比亚迪填 002594；沪深 300 基准填 000300。不要加 .SZ 或 .SS。',
       overseas: '港股：1211.HK（比亚迪股份）；美股：AAPL；美股 ETF：SPY；加密货币：BTC-USD。',
-      note: '标的与基准建议选同一市场，例如 002594 对 000300，或 AAPL 对 SPY。',
+      note: '基准可留空：将只评估策略自身的收益、回撤、成本和稳健性。需比较广义 A 股表现时可填沪深300 000300。',
     },
   },
   en: {
@@ -60,7 +60,7 @@ const copy = {
     tabSetup: 'Strategy configuration', tabBacktest: 'Backtest comparison', tabForensics: 'Strategy evaluation',
     backtestEmpty: 'Configure a strategy and run a backtest first.', forensicsEmpty: 'Run a backtest first so the strategy evaluation has evidence.',
     configure: 'Strategy configuration',
-    ticker: 'Ticker', benchmark: 'Benchmark', period: 'History', cost: 'One-way cost',
+    ticker: 'Ticker', benchmark: 'Benchmark (optional)', period: 'History', cost: 'One-way cost',
     windows: 'Parameter windows', fast: 'Fast', slow: 'Slow', run: 'Run backtest analysis',
     running: 'Fetching prices and auditing…', presets: 'Templates', introTitle: 'Audit coverage',
     evidenceNames: ['Leakage', 'Overfitting', 'Sensitivity', 'Costs', 'Regimes', 'Alpha'],
@@ -82,7 +82,7 @@ const copy = {
       trigger: 'Show ticker format guidance', close: 'Hide guidance', title: 'Ticker format',
       aShare: 'A-shares use six digits: BYD is 002594 and CSI 300 is 000300. Do not add .SZ or .SS.',
       overseas: 'Hong Kong: 1211.HK (BYD); US: AAPL; US ETF: SPY; crypto: BTC-USD.',
-      note: 'Use a benchmark from the same market, such as 002594 vs 000300 or AAPL vs SPY.',
+      note: 'Leave blank to evaluate strategy return, drawdown, costs and robustness. For broad A-share comparison, use CSI 300 (000300).',
     },
   },
 }
@@ -131,17 +131,23 @@ function StatusIcon({ check }: { check: AuditCheck }) {
 function EquityChart({ report, labels }: { report: ForensicsReport; labels: Labels }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const points = useMemo(() => {
-    const all = report.equity_curve.flatMap((point) => [point.strategy, point.benchmark])
+    const hasBenchmark = report.equity_curve.some((point) => point.benchmark !== null)
+    const all = report.equity_curve.flatMap((point) =>
+      point.benchmark === null ? [point.strategy] : [point.strategy, point.benchmark]
+    )
     const low = Math.min(...all)
     const high = Math.max(...all)
     const span = Math.max(1, high - low)
     const toY = (value: number) => 225 - ((value - low) / span) * 190
     const map = (key: 'strategy' | 'benchmark') => report.equity_curve.map((point, index) => {
       const x = (index / Math.max(1, report.equity_curve.length - 1)) * 900
-      const y = toY(point[key])
+      const y = toY(point[key] ?? point.strategy)
       return `${x.toFixed(1)},${y.toFixed(1)}`
     }).join(' ')
-    return { strategy: map('strategy'), benchmark: map('benchmark'), low, high, toY }
+    return {
+      strategy: map('strategy'), benchmark: hasBenchmark ? map('benchmark') : '',
+      hasBenchmark, low, high, toY,
+    }
   }, [report])
 
   const baseStrategy = report.equity_curve[0]?.strategy || 1
@@ -158,13 +164,13 @@ function EquityChart({ report, labels }: { report: ForensicsReport; labels: Labe
     <div className="qf-chart-wrap" onPointerLeave={() => setHoverIndex(null)}>
       <svg className="qf-chart" viewBox="0 0 900 250" role="img" aria-label="Strategy and benchmark equity curve" onPointerMove={(event) => updateHover(event.clientX, event.currentTarget)}>
         {[35, 82.5, 130, 177.5, 225].map((y) => <line key={y} x1="0" x2="900" y1={y} y2={y} className="qf-gridline" />)}
-        <polyline points={points.benchmark} className="qf-line qf-line-base" />
+        {points.hasBenchmark && <polyline points={points.benchmark} className="qf-line qf-line-base" />}
         <polyline points={points.strategy} className="qf-line qf-line-strategy" />
         {hovered && <g className="qf-chart-crosshair" aria-hidden="true">
           <line x1={hoverX} x2={hoverX} y1="20" y2="230" />
           <line x1="0" x2="900" y1={points.toY(hovered.strategy)} y2={points.toY(hovered.strategy)} />
           <circle cx={hoverX} cy={points.toY(hovered.strategy)} r="4" className="strategy" />
-          <circle cx={hoverX} cy={points.toY(hovered.benchmark)} r="4" className="benchmark" />
+          {points.hasBenchmark && hovered.benchmark !== null && <circle cx={hoverX} cy={points.toY(hovered.benchmark)} r="4" className="benchmark" />}
         </g>}
         <rect className="qf-chart-hitbox" x="0" y="0" width="900" height="250" />
       </svg>
@@ -173,7 +179,7 @@ function EquityChart({ report, labels }: { report: ForensicsReport; labels: Labe
       {hovered && <div className="qf-chart-tooltip" style={{ left: `${Math.min(88, Math.max(12, (hoverX / 900) * 100))}%` }}>
         <strong>{hovered.date}</strong>
         <div><span><i className="strategy" />{labels.strategy}</span><b>{formatPct(((hovered.strategy / baseStrategy) - 1) * 100)}</b></div>
-        <div><span><i />{labels.base}</span><b>{formatPct(((hovered.benchmark / baseBenchmark) - 1) * 100)}</b></div>
+        {points.hasBenchmark && hovered.benchmark !== null && <div><span><i />{labels.base}</span><b>{formatPct(((hovered.benchmark / baseBenchmark) - 1) * 100)}</b></div>}
       </div>}
     </div>
   )
@@ -185,7 +191,7 @@ export default function QuantWorkbench() {
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('setup')
   const [showCodeHelp, setShowCodeHelp] = useState(false)
   const [form, setForm] = useState<ForensicsInput>({
-    ticker: 'SPY', benchmark: 'SPY', period: '5y', strategy: 'ma_cross',
+    ticker: 'SPY', benchmark: '', period: '5y', strategy: 'ma_cross',
     fast_window: 20, slow_window: 60, custom_signal: 'ma_cross', entry_threshold: 0.2,
     exit_threshold: 0, strategy_name: '', transaction_cost_bps: 8, lang,
   })
@@ -250,7 +256,7 @@ export default function QuantWorkbench() {
           </>}
           <div className="qf-fields qf-fields-2">
             <label><span>{labels.ticker}<button className="qf-help-trigger" type="button" aria-label={labels.codeHelp.trigger} aria-expanded={showCodeHelp} onClick={() => setShowCodeHelp((visible) => !visible)}><CircleHelp size={14} /></button></span><input value={form.ticker} onChange={(event) => update('ticker', event.target.value)} placeholder="002594 / AAPL / 1211.HK" required /></label>
-            <label><span>{labels.benchmark}</span><input value={form.benchmark} onChange={(event) => update('benchmark', event.target.value)} placeholder="SPY" required /></label>
+            <label><span>{labels.benchmark}</span><input value={form.benchmark} onChange={(event) => update('benchmark', event.target.value)} placeholder={lang === 'zh' ? '可留空；大盘比较可填 000300' : 'Optional; use 000300 for broad A-shares'} /></label>
           </div>
           {showCodeHelp && <aside className="qf-code-help" role="note"><header><strong>{labels.codeHelp.title}</strong><button type="button" onClick={() => setShowCodeHelp(false)}>{labels.codeHelp.close}</button></header><p>{labels.codeHelp.aShare}</p><p>{labels.codeHelp.overseas}</p><p>{labels.codeHelp.note}</p></aside>}
           <div className="qf-fields qf-fields-2">
@@ -306,14 +312,14 @@ function Report({ report, lang, labels, view }: { report: ForensicsReport; lang:
     [labels.annualized, formatPct(report.metrics.annualized_return_pct)],
     [labels.drawdown, formatPct(report.metrics.max_drawdown_pct)],
     [labels.sharpe, report.metrics.sharpe_ratio.toFixed(2)],
-    [labels.alpha, formatPct(report.metrics.alpha_pct)],
+    ...(report.metrics.alpha_pct === null ? [] : [[labels.alpha, formatPct(report.metrics.alpha_pct)] as const]),
   ]
   const weakest = [...report.checks].sort((a, b) => a.score - b.score)[0]
   return <section className="qf-report">
     {view === 'backtest' && <>
       <div className="qf-report-head"><div><span>BACKTEST / {report.run_id}</span><h2>{report.ticker} · {report.strategy_label}</h2></div><div>{report.data_start} → {report.data_end}<br />{labels.source}</div></div>
       <div className="qf-metrics">{metrics.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
-      <article className="qf-card qf-equity"><div className="qf-card-title"><div><span>HISTORICAL COMPARISON</span><h3>{labels.curve}</h3></div><div className="qf-legend"><span><i className="strategy" />{labels.strategy}</span><span><i />{labels.base}</span></div></div><EquityChart report={report} labels={labels} /></article>
+      <article className="qf-card qf-equity"><div className="qf-card-title"><div><span>HISTORICAL COMPARISON</span><h3>{labels.curve}</h3></div><div className="qf-legend"><span><i className="strategy" />{labels.strategy}</span>{report.benchmark && <span><i />{labels.base}</span>}</div></div><EquityChart report={report} labels={labels} /></article>
     </>}
     {view === 'forensics' && <>
       <article className="qf-card qf-narrative"><div className="qf-ai-tag"><Sparkles size={14} />{report.narrative.generated_by_ai ? labels.aiNote : labels.ruleNote}</div><blockquote>{report.narrative.summary}</blockquote><div><span>{labels.primary}</span><p>{report.narrative.primary_cause}</p></div><div><span>{labels.repair}</span><p>{report.narrative.repair_action}</p></div></article>

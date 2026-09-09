@@ -22,7 +22,7 @@ from fin_agent.domain.types import (
 logger = logging.getLogger(__name__)
 
 _A_SHARE_RE = re.compile(r"^(sh|sz|bj)?\d{6}$", re.IGNORECASE)
-_SHANGHAI_INDEX_CODES = frozenset({"000001", "000016", "000300", "000852", "000905"})
+_SHANGHAI_INDEX_CODES = frozenset({"000001", "000016", "000300", "000688", "000852", "000905"})
 
 
 def _is_a_share_ticker(ticker: str) -> bool:

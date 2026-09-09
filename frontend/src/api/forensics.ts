@@ -32,8 +32,8 @@ export interface PerformanceMetrics {
   max_drawdown_pct: number
   win_rate_pct: number
   trade_count: number
-  beta: number
-  alpha_pct: number
+  beta: number | null
+  alpha_pct: number | null
 }
 
 export interface AuditCheck {
@@ -49,7 +49,7 @@ export interface ForensicsReport {
   run_id: string
   created_at: string
   ticker: string
-  benchmark: string
+  benchmark: string | null
   period: string
   strategy: StrategyKind
   strategy_label: string
@@ -59,12 +59,12 @@ export interface ForensicsReport {
   reliability_score: number
   verdict: string
   metrics: PerformanceMetrics
-  benchmark_return_pct: number
+  benchmark_return_pct: number | null
   checks: AuditCheck[]
   sensitivity: Array<{ label: string; fast_window: number; slow_window: number; total_return_pct: number }>
   cost_scenarios: Array<{ cost_bps: number; total_return_pct: number }>
   regimes: Array<{ regime: string; trading_days: number; annualized_return_pct: number }>
-  equity_curve: Array<{ date: string; strategy: number; benchmark: number }>
+  equity_curve: Array<{ date: string; strategy: number; benchmark: number | null }>
   narrative: { summary: string; primary_cause: string; repair_action: string; generated_by_ai: boolean }
   disclaimer: string
 }

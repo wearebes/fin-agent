@@ -293,11 +293,13 @@ class ForensicsService:
 
     async def diagnose(self, request: ForensicsRequest) -> ForensicsReport:
         asset = self._load(request.ticker, request.period)
-        benchmark = (
-            asset
-            if request.ticker.strip().upper() == request.benchmark.strip().upper()
-            else self._load(request.benchmark, request.period)
-        )
+        benchmark = None
+        if request.benchmark:
+            benchmark = (
+                asset
+                if request.ticker.strip().upper() == request.benchmark.strip().upper()
+                else self._load(request.benchmark, request.period)
+            )
         dates, closes, bench_closes = self._align(asset, benchmark)
         if len(closes) < request.slow_window + 60:
             raise NoMarketDataError(
@@ -307,13 +309,18 @@ class ForensicsService:
 
         signals = _signals_for_request(closes, request)
         strategy_returns, trades = _strategy_returns(closes, signals, request.transaction_cost_bps)
-        benchmark_returns = [0.0] + [
-            bench_closes[i] / bench_closes[i - 1] - 1.0 for i in range(1, len(bench_closes))
-        ]
+        asset_returns = [0.0] + [closes[i] / closes[i - 1] - 1.0 for i in range(1, len(closes))]
+        benchmark_returns = (
+            [0.0] + [
+                bench_closes[i] / bench_closes[i - 1] - 1.0 for i in range(1, len(bench_closes))
+            ]
+            if bench_closes is not None
+            else None
+        )
 
         sensitivity = self._sensitivity(request, closes)
         costs = self._cost_scenarios(request, closes, signals)
-        regimes = self._regime_results(strategy_returns, benchmark_returns)
+        regimes = self._regime_results(strategy_returns, benchmark_returns or asset_returns)
         checks = self._checks(
             request,
             closes,
@@ -330,13 +337,13 @@ class ForensicsService:
         narrative = await self._ai_narrative(request, metrics, checks, narrative)
 
         strategy_equity = _equity(strategy_returns)
-        benchmark_equity = _equity(benchmark_returns)
+        benchmark_equity = _equity(benchmark_returns) if benchmark_returns is not None else None
         stride = max(1, math.ceil(len(dates) / 160))
         curve = [
             EquityPoint(
                 date=dates[i],
                 strategy=round(strategy_equity[i], 2),
-                benchmark=round(benchmark_equity[i], 2),
+                benchmark=round(benchmark_equity[i], 2) if benchmark_equity is not None else None,
             )
             for i in range(0, len(dates), stride)
         ]
@@ -345,7 +352,9 @@ class ForensicsService:
                 EquityPoint(
                     date=dates[-1],
                     strategy=round(strategy_equity[-1], 2),
-                    benchmark=round(benchmark_equity[-1], 2),
+                    benchmark=(
+                        round(benchmark_equity[-1], 2) if benchmark_equity is not None else None
+                    ),
                 )
             )
 
@@ -353,7 +362,7 @@ class ForensicsService:
             run_id=f"qf_{uuid4().hex[:12]}",
             created_at=datetime.now(UTC).isoformat(),
             ticker=request.ticker.upper(),
-            benchmark=request.benchmark.upper(),
+            benchmark=request.benchmark.upper() if request.benchmark else None,
             period=request.period,
             strategy=request.strategy,
             strategy_label=self._strategy_label(request),
@@ -363,7 +372,9 @@ class ForensicsService:
             reliability_score=reliability,
             verdict=verdict,
             metrics=metrics,
-            benchmark_return_pct=_pct(_compound(benchmark_returns)),
+            benchmark_return_pct=(
+                _pct(_compound(benchmark_returns)) if benchmark_returns is not None else None
+            ),
             checks=checks,
             sensitivity=sensitivity,
             cost_scenarios=costs,
@@ -392,22 +403,25 @@ class ForensicsService:
 
     @staticmethod
     def _align(
-        asset: MarketDataResponse, benchmark: MarketDataResponse
-    ) -> tuple[list[date], list[float], list[float]]:
+        asset: MarketDataResponse, benchmark: MarketDataResponse | None
+    ) -> tuple[list[date], list[float], list[float] | None]:
         asset_map = {point.trade_date: point.close for point in asset.data if point.close > 0}
+        if benchmark is None:
+            dates = sorted(asset_map)
+            return dates, [asset_map[d] for d in dates], None
         bench_map = {point.trade_date: point.close for point in benchmark.data if point.close > 0}
         dates = sorted(set(asset_map) & set(bench_map))
         return dates, [asset_map[d] for d in dates], [bench_map[d] for d in dates]
 
     @staticmethod
     def _metrics(
-        strategy: Sequence[float], benchmark: Sequence[float], trades: int
+        strategy: Sequence[float], benchmark: Sequence[float] | None, trades: int
     ) -> PerformanceMetrics:
         volatility = _std(strategy) * math.sqrt(252)
         sharpe = 0.0 if volatility == 0 else _safe_mean(strategy) * 252 / volatility
         active_days = [item for item in strategy if item != 0]
         wins = sum(1 for item in active_days if item > 0)
-        beta, alpha = _beta_alpha(strategy, benchmark)
+        beta, alpha = _beta_alpha(strategy, benchmark) if benchmark is not None else (None, None)
         return PerformanceMetrics(
             total_return_pct=_pct(_compound(strategy)),
             annualized_return_pct=_pct(_annualized(strategy)),
@@ -416,8 +430,8 @@ class ForensicsService:
             max_drawdown_pct=_pct(_max_drawdown(strategy)),
             win_rate_pct=round(100 * wins / len(active_days), 2) if active_days else 0.0,
             trade_count=trades,
-            beta=round(beta, 2),
-            alpha_pct=_pct(alpha),
+            beta=round(beta, 2) if beta is not None else None,
+            alpha_pct=_pct(alpha) if alpha is not None else None,
         )
 
     @staticmethod
@@ -485,7 +499,7 @@ class ForensicsService:
         request: ForensicsRequest,
         closes: Sequence[float],
         strategy: Sequence[float],
-        benchmark: Sequence[float],
+        benchmark: Sequence[float] | None,
         sensitivity: Sequence[SensitivityPoint],
         costs: Sequence[CostScenario],
         regimes: Sequence[RegimeResult],
@@ -528,13 +542,15 @@ class ForensicsService:
             )
         )
 
-        beta, alpha = _beta_alpha(strategy, benchmark)
-        attribution_score = max(
-            0, min(100, round(78 - abs(beta) * 22 + max(-15, min(20, alpha * 100))))
+        beta, alpha = _beta_alpha(strategy, benchmark) if benchmark is not None else (None, None)
+        attribution_score = (
+            max(0, min(100, round(78 - abs(beta) * 22 + max(-15, min(20, alpha * 100)))))
+            if beta is not None and alpha is not None
+            else None
         )
 
         if lang == "zh":
-            return [
+            checks = [
                 AuditCheck(
                     key="leakage",
                     title="未来数据泄漏",
@@ -577,16 +593,20 @@ class ForensicsService:
                         f"{item.regime}: {item.annualized_return_pct:+.1f}%" for item in regimes
                     ),
                 ),
-                AuditCheck(
-                    key="attribution",
-                    title="Alpha 归因",
-                    status=_status(attribution_score),
-                    score=attribution_score,
-                    finding="剥离基准方向暴露后检查剩余收益。",
-                    evidence=f"估算 Beta {beta:.2f}，年化 Alpha {_pct(alpha):+.2f}%。",
-                ),
             ]
-        return [
+            if attribution_score is not None and beta is not None and alpha is not None:
+                checks.append(
+                    AuditCheck(
+                        key="attribution",
+                        title="Alpha 归因",
+                        status=_status(attribution_score),
+                        score=attribution_score,
+                        finding="剥离基准方向暴露后检查剩余收益。",
+                        evidence=f"估算 Beta {beta:.2f}，年化 Alpha {_pct(alpha):+.2f}%。",
+                    )
+                )
+            return checks
+        checks = [
             AuditCheck(
                 key="leakage",
                 title="Look-ahead leakage",
@@ -634,15 +654,19 @@ class ForensicsService:
                     f"{item.regime}: {item.annualized_return_pct:+.1f}%" for item in regimes
                 ),
             ),
-            AuditCheck(
-                key="attribution",
-                title="Alpha attribution",
-                status=_status(attribution_score),
-                score=attribution_score,
-                finding="Estimates residual return after benchmark direction exposure.",
-                evidence=f"Estimated beta {beta:.2f}; annualized alpha {_pct(alpha):+.2f}%.",
-            ),
         ]
+        if attribution_score is not None and beta is not None and alpha is not None:
+            checks.append(
+                AuditCheck(
+                    key="attribution",
+                    title="Alpha attribution",
+                    status=_status(attribution_score),
+                    score=attribution_score,
+                    finding="Estimates residual return after benchmark direction exposure.",
+                    evidence=f"Estimated beta {beta:.2f}; annualized alpha {_pct(alpha):+.2f}%.",
+                )
+            )
+        return checks
 
     @staticmethod
     def _verdict(score: int, lang: str) -> str:
