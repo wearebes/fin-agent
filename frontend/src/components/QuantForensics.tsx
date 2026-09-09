@@ -17,6 +17,7 @@ import {
 import {
   runForensics,
   type AuditCheck,
+  type CustomSignalKind,
   type ForensicsInput,
   type ForensicsReport,
   type StrategyKind,
@@ -26,36 +27,50 @@ import { useWorkspace } from '../store/workspace'
 const copy = {
   zh: {
     eyebrow: '策略法医',
-    tabSetup: '策略设置', tabBacktest: '回测对比', tabForensics: '策略法医',
-    backtestEmpty: '先完成策略设置并运行回测。', forensicsEmpty: '先运行回测，策略法医才有证据可检查。',
-    configure: '策略设置',
+    tabSetup: '策略配置', tabBacktest: '回测对比', tabForensics: '策略法医',
+    backtestEmpty: '请先完成策略配置并运行回测。', forensicsEmpty: '请先运行回测，策略法医才有证据可检查。',
+    configure: '策略配置',
     ticker: '标的代码', benchmark: '基准', period: '历史区间', cost: '单边交易成本',
-    windows: '参数窗口', fast: '快速', slow: '慢速', run: '开始策略尸检',
+    windows: '参数窗口', fast: '快速', slow: '慢速', run: '开始回测分析',
     running: '正在获取行情并审计…', presets: '策略模板', introTitle: '检查范围',
     evidenceNames: ['未来数据泄漏', '过拟合', '参数敏感性', '交易成本', '市场状态', 'Alpha 真实性'],
     reliability: '策略可信度', annualized: '年化收益', drawdown: '最大回撤', chartReturn: '收益率',
-    sharpe: '夏普比率', alpha: '年化 Alpha', curve: '净值证据', strategy: '策略',
+    sharpe: '夏普比率', alpha: '年化 Alpha', curve: '净值证据', strategy: '组合',
     base: '基准', checks: '法医检查', sensitivity: '参数敏感度', costs: '成本压力测试',
-    regimes: '市场状态归因', aiNote: 'AI 法医摘要', ruleNote: '规则引擎摘要',
-    primary: '主要死因', repair: '最小修复建议', observations: '个交易日', trades: '次换仓',
+    regimes: '市场状态归因', aiNote: 'AI 审计摘要', ruleNote: '规则摘要',
+    primary: '主要风险来源', repair: '最小修复建议', observations: '个交易日', trades: '次换仓',
     source: '历史收盘价', error: '审计未完成', retry: '检查代码或更换标的后重试。',
+    customName: '规则名称', customSignal: '信号指标', entry: '入场阈值', exit: '离场阈值',
+    customHint: {
+      ma_cross: '阈值为快慢均线差（%）：高于入场值持有，低于离场值空仓。',
+      rsi: '阈值为 RSI：低于入场值买入，高于离场值卖出。',
+      momentum: '阈值为区间动量（%）：高于入场值持有，低于离场值空仓。',
+      bollinger: '阈值为标准差倍数：跌破入场倍数买入，回到离场倍数卖出。',
+    },
   },
   en: {
     eyebrow: 'Quant Forensics',
-    tabSetup: 'Strategy setup', tabBacktest: 'Backtest comparison', tabForensics: 'Strategy forensics',
-    backtestEmpty: 'Set up a strategy and run a backtest first.', forensicsEmpty: 'Run a backtest first so the forensic checks have evidence.',
-    configure: 'Strategy setup',
+    tabSetup: 'Strategy configuration', tabBacktest: 'Backtest comparison', tabForensics: 'Strategy forensics',
+    backtestEmpty: 'Configure a strategy and run a backtest first.', forensicsEmpty: 'Run a backtest first so the forensic checks have evidence.',
+    configure: 'Strategy configuration',
     ticker: 'Ticker', benchmark: 'Benchmark', period: 'History', cost: 'One-way cost',
-    windows: 'Parameter windows', fast: 'Fast', slow: 'Slow', run: 'Start autopsy',
+    windows: 'Parameter windows', fast: 'Fast', slow: 'Slow', run: 'Run backtest analysis',
     running: 'Fetching prices and auditing…', presets: 'Templates', introTitle: 'Audit coverage',
     evidenceNames: ['Leakage', 'Overfitting', 'Sensitivity', 'Costs', 'Regimes', 'Alpha'],
     reliability: 'Reliability', annualized: 'Annual return', drawdown: 'Max drawdown', chartReturn: 'Return',
-    sharpe: 'Sharpe ratio', alpha: 'Annual alpha', curve: 'Equity evidence', strategy: 'Strategy',
+    sharpe: 'Sharpe ratio', alpha: 'Annual alpha', curve: 'Equity evidence', strategy: 'Portfolio',
     base: 'Benchmark', checks: 'Forensic checks', sensitivity: 'Parameter sensitivity',
-    costs: 'Cost stress', regimes: 'Regime attribution', aiNote: 'AI forensic brief',
-    ruleNote: 'Rules-engine brief', primary: 'Primary failure', repair: 'Minimum repair',
+    costs: 'Cost stress', regimes: 'Regime attribution', aiNote: 'AI audit brief',
+    ruleNote: 'Rules summary', primary: 'Primary risk', repair: 'Minimum repair',
     observations: 'sessions', trades: 'trades', source: 'Historical closes',
     error: 'Audit did not complete', retry: 'Check the symbol or try another instrument.',
+    customName: 'Rule name', customSignal: 'Signal indicator', entry: 'Entry threshold', exit: 'Exit threshold',
+    customHint: {
+      ma_cross: 'Thresholds are MA spread (%): hold above entry and exit below the exit value.',
+      rsi: 'Thresholds are RSI: enter below entry and exit above the exit value.',
+      momentum: 'Thresholds are lookback momentum (%): hold above entry and exit below the exit value.',
+      bollinger: 'Thresholds are standard deviations: enter below the lower band and exit at the exit band.',
+    },
   },
 }
 
@@ -66,7 +81,23 @@ const templates: Array<{ kind: StrategyKind; zh: string; en: string; fast: numbe
   { kind: 'ma_cross', zh: '双均线趋势', en: 'Dual MA trend', fast: 20, slow: 60 },
   { kind: 'breakout', zh: '区间突破', en: 'Range breakout', fast: 10, slow: 55 },
   { kind: 'mean_reversion', zh: '均值回归', en: 'Mean reversion', fast: 10, slow: 40 },
+  { kind: 'rsi_reversion', zh: 'RSI 反转', en: 'RSI reversal', fast: 14, slow: 60 },
+  { kind: 'momentum_trend', zh: '动量趋势', en: 'Momentum trend', fast: 20, slow: 60 },
+  { kind: 'bollinger_reversion', zh: '布林带反转', en: 'Bollinger reversion', fast: 20, slow: 60 },
+  { kind: 'custom', zh: '自定义规则', en: 'Custom rule', fast: 20, slow: 60 },
 ]
+
+const customSignals: Array<{ kind: CustomSignalKind; zh: string; en: string }> = [
+  { kind: 'ma_cross', zh: '均线差', en: 'MA spread' },
+  { kind: 'rsi', zh: 'RSI', en: 'RSI' },
+  { kind: 'momentum', zh: '区间动量', en: 'Momentum' },
+  { kind: 'bollinger', zh: '布林带', en: 'Bollinger bands' },
+]
+
+const customDefaults: Record<CustomSignalKind, { entry: number; exit: number }> = {
+  ma_cross: { entry: 0.2, exit: 0 }, rsi: { entry: 30, exit: 55 },
+  momentum: { entry: 2, exit: 0 }, bollinger: { entry: 2, exit: 0 },
+}
 
 const regimeLabels: Record<string, { zh: string; en: string }> = {
   bull: { zh: '上涨环境', en: 'Bull' },
@@ -141,7 +172,8 @@ export default function QuantWorkbench() {
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('setup')
   const [form, setForm] = useState<ForensicsInput>({
     ticker: 'SPY', benchmark: 'SPY', period: '5y', strategy: 'ma_cross',
-    fast_window: 20, slow_window: 60, transaction_cost_bps: 8, lang,
+    fast_window: 20, slow_window: 60, custom_signal: 'ma_cross', entry_threshold: 0.2,
+    exit_threshold: 0, strategy_name: '', transaction_cost_bps: 8, lang,
   })
   const mutation = useMutation({
     mutationFn: runForensics,
@@ -154,6 +186,12 @@ export default function QuantWorkbench() {
     const template = templates.find((item) => item.kind === kind)!
     setForm((current) => ({
       ...current, strategy: kind, fast_window: template.fast, slow_window: template.slow,
+    }))
+  }
+  const selectCustomSignal = (kind: CustomSignalKind) => {
+    const defaults = customDefaults[kind]
+    setForm((current) => ({
+      ...current, custom_signal: kind, entry_threshold: defaults.entry, exit_threshold: defaults.exit,
     }))
   }
   const submit = (event: FormEvent) => {
@@ -185,6 +223,17 @@ export default function QuantWorkbench() {
           <div className="qf-template-grid">
             {templates.map((template) => <button type="button" key={template.kind} onClick={() => selectTemplate(template.kind)} className={form.strategy === template.kind ? 'active' : ''}><Activity size={16} /><span>{template[lang]}</span></button>)}
           </div>
+          {form.strategy === 'custom' && <>
+            <div className="qf-fields qf-fields-2">
+              <label><span>{labels.customName}</span><input value={form.strategy_name} maxLength={40} onChange={(event) => update('strategy_name', event.target.value)} placeholder={lang === 'zh' ? '例如：低波动均线规则' : 'e.g. Low-volatility MA rule'} /></label>
+              <label><span>{labels.customSignal}</span><select value={form.custom_signal} onChange={(event) => selectCustomSignal(event.target.value as CustomSignalKind)}>{customSignals.map((signal) => <option key={signal.kind} value={signal.kind}>{signal[lang]}</option>)}</select></label>
+            </div>
+            <div className="qf-fields qf-fields-2">
+              <label><span>{labels.entry}</span><input type="number" step="0.1" value={form.entry_threshold} onChange={(event) => update('entry_threshold', Number(event.target.value))} /></label>
+              <label><span>{labels.exit}</span><input type="number" step="0.1" value={form.exit_threshold} onChange={(event) => update('exit_threshold', Number(event.target.value))} /></label>
+            </div>
+            <p className="qf-custom-hint">{labels.customHint[form.custom_signal]}</p>
+          </>}
           <div className="qf-fields qf-fields-2">
             <label><span>{labels.ticker}</span><input value={form.ticker} onChange={(event) => update('ticker', event.target.value)} placeholder="SPY / AAPL / 510300" required /></label>
             <label><span>{labels.benchmark}</span><input value={form.benchmark} onChange={(event) => update('benchmark', event.target.value)} placeholder="SPY" required /></label>

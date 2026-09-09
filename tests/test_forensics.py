@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from fin_agent.domain.constants import AssetType, DataFrequency
-from fin_agent.domain.forensics import ForensicsRequest, StrategyKind
+from fin_agent.domain.forensics import CustomSignalKind, ForensicsRequest, StrategyKind
 from fin_agent.domain.types import LLMMessage, LLMResponse, MarketDataPoint, MarketDataResponse
 from fin_agent.interfaces.api.forensics_router import build_forensics_router
 from fin_agent.services.forensics import ForensicsService, NoMarketDataError
@@ -122,6 +122,28 @@ async def test_forensics_report_is_complete_and_reproducible() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("strategy", list(StrategyKind))
+async def test_each_strategy_kind_produces_an_auditable_report(strategy: StrategyKind) -> None:
+    request = ForensicsRequest(
+        ticker="TEST",
+        benchmark="SPY",
+        strategy=strategy,
+        custom_signal=CustomSignalKind.RSI,
+        entry_threshold=30,
+        exit_threshold=55,
+        strategy_name="RSI 自定义规则",
+    )
+
+    report = await ForensicsService(FakeMarketData()).diagnose(request)
+
+    assert report.strategy == strategy
+    assert len(report.equity_curve) > 1
+    assert len(report.checks) == 6
+    if strategy == StrategyKind.CUSTOM:
+        assert report.strategy_label == "RSI 自定义规则"
+
+
+@pytest.mark.asyncio
 async def test_llm_can_only_replace_narrative() -> None:
     request = ForensicsRequest(ticker="TEST", benchmark="SPY")
     deterministic = await ForensicsService(FakeMarketData()).diagnose(request)
@@ -144,6 +166,16 @@ async def test_short_history_is_rejected() -> None:
 def test_fast_window_must_be_smaller_than_slow_window() -> None:
     with pytest.raises(ValidationError, match="fast_window must be smaller"):
         ForensicsRequest(fast_window=60, slow_window=20)
+
+
+def test_custom_rsi_thresholds_must_be_ordered() -> None:
+    with pytest.raises(ValidationError, match="entry below exit"):
+        ForensicsRequest(
+            strategy=StrategyKind.CUSTOM,
+            custom_signal=CustomSignalKind.RSI,
+            entry_threshold=60,
+            exit_threshold=40,
+        )
 
 
 def _api(service: ForensicsService) -> FastAPI:

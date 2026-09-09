@@ -12,6 +12,17 @@ class StrategyKind(StrEnum):
     MA_CROSS = "ma_cross"
     BREAKOUT = "breakout"
     MEAN_REVERSION = "mean_reversion"
+    RSI_REVERSION = "rsi_reversion"
+    MOMENTUM_TREND = "momentum_trend"
+    BOLLINGER_REVERSION = "bollinger_reversion"
+    CUSTOM = "custom"
+
+
+class CustomSignalKind(StrEnum):
+    MA_CROSS = "ma_cross"
+    RSI = "rsi"
+    MOMENTUM = "momentum"
+    BOLLINGER = "bollinger"
 
 
 class AuditStatus(StrEnum):
@@ -27,6 +38,10 @@ class ForensicsRequest(BaseModel):
     strategy: StrategyKind = StrategyKind.MA_CROSS
     fast_window: int = Field(default=20, ge=3, le=120)
     slow_window: int = Field(default=60, ge=10, le=260)
+    custom_signal: CustomSignalKind = CustomSignalKind.MA_CROSS
+    entry_threshold: float = Field(default=0.2, ge=-100, le=100)
+    exit_threshold: float = Field(default=0.0, ge=-100, le=100)
+    strategy_name: str = Field(default="", max_length=40)
     transaction_cost_bps: float = Field(default=8.0, ge=0, le=100)
     lang: str = Field(default="zh", pattern=r"^(zh|en)$")
 
@@ -34,6 +49,11 @@ class ForensicsRequest(BaseModel):
     def validate_windows(self) -> ForensicsRequest:
         if self.fast_window >= self.slow_window:
             raise ValueError("fast_window must be smaller than slow_window")
+        if self.strategy == StrategyKind.CUSTOM and self.custom_signal == CustomSignalKind.RSI:
+            if not 0 < self.entry_threshold < self.exit_threshold < 100:
+                raise ValueError(
+                    "RSI custom thresholds must be between 0 and 100, with entry below exit"
+                )
         return self
 
 

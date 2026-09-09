@@ -2049,6 +2049,7 @@ button {
 .qf-template-grid button.active { color: var(--qf-accent); background: rgba(90,200,250,.07); border-color: rgba(90,200,250,.35); box-shadow: inset 0 0 22px rgba(90,200,250,.025); }
 .qf-fields { display: grid; gap: 10px; margin-top: 15px; }
 .qf-fields-2 { grid-template-columns: 1fr 1fr; }
+.qf-custom-hint { margin: 9px 0 0; color: #7d878e; font-size: .68rem; line-height: 1.55; }
 .qf-fields label, .qf-window-grid label { min-width: 0; }
 .qf-fields label > span, .qf-window-grid label > span { display: block; color: #707b83; font-size: .66rem; margin-bottom: 7px; }
 .qf-fields input, .qf-fields select, .qf-window-grid input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--qf-line); border-radius: 9px; outline: none; color: #eef3ed; background: rgba(0,0,0,.24); font: 600 .78rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; transition: .15s ease; }

@@ -20,6 +20,7 @@ from fin_agent.domain.forensics import (
     AuditCheck,
     AuditStatus,
     CostScenario,
+    CustomSignalKind,
     EquityPoint,
     ForensicsNarrative,
     ForensicsReport,
@@ -109,12 +110,46 @@ def _moving_average(values: Sequence[float], end: int, window: int) -> float | N
     return _safe_mean(values[start:end])
 
 
+def _ema(values: Sequence[float]) -> float:
+    if not values:
+        return 0.0
+    alpha = 2 / (len(values) + 1)
+    value = values[0]
+    for item in values[1:]:
+        value = alpha * item + (1 - alpha) * value
+    return value
+
+
+def _rsi(values: Sequence[float], end: int, window: int) -> float | None:
+    start = end - window - 1
+    if start < 0:
+        return None
+    changes = [values[index] - values[index - 1] for index in range(start + 1, end)]
+    gains = [max(0.0, change) for change in changes]
+    losses = [max(0.0, -change) for change in changes]
+    average_loss = _safe_mean(losses)
+    if average_loss == 0:
+        return 100.0
+    relative_strength = _safe_mean(gains) / average_loss
+    return 100 - 100 / (1 + relative_strength)
+
+
+def _momentum(values: Sequence[float], end: int, window: int) -> float | None:
+    start = end - window - 1
+    if start < 0 or values[start] == 0:
+        return None
+    return (values[end - 1] / values[start] - 1) * 100
+
+
 def _signals(
     closes: Sequence[float],
     kind: StrategyKind,
     fast: int,
     slow: int,
     *,
+    custom_signal: CustomSignalKind = CustomSignalKind.MA_CROSS,
+    entry_threshold: float = 0.2,
+    exit_threshold: float = 0.0,
     lagged: bool = True,
 ) -> list[float]:
     result = [0.0] * len(closes)
@@ -136,7 +171,7 @@ def _signals(
                 held = 1.0
             elif exit_ma is not None and reference < exit_ma:
                 held = 0.0
-        else:
+        elif kind == StrategyKind.MEAN_REVERSION:
             window = closes[end - slow : end]
             sigma = _std(window)
             z_score = 0.0 if sigma == 0 else (closes[end - 1] - _safe_mean(window)) / sigma
@@ -144,8 +179,72 @@ def _signals(
                 held = 1.0
             elif z_score > 0.0:
                 held = 0.0
+        elif kind == StrategyKind.RSI_REVERSION:
+            rsi = _rsi(closes, end, fast)
+            if rsi is not None and rsi < 30:
+                held = 1.0
+            elif rsi is not None and rsi > 55:
+                held = 0.0
+        elif kind == StrategyKind.MOMENTUM_TREND:
+            momentum = _momentum(closes, end, fast)
+            if momentum is not None:
+                held = 1.0 if momentum > 0 and closes[end - 1] > slow_ma else 0.0
+        elif kind == StrategyKind.BOLLINGER_REVERSION:
+            window = closes[end - slow : end]
+            sigma = _std(window)
+            z_score = 0.0 if sigma == 0 else (closes[end - 1] - _safe_mean(window)) / sigma
+            if z_score < -2.0:
+                held = 1.0
+            elif z_score >= 0:
+                held = 0.0
+        elif custom_signal == CustomSignalKind.MA_CROSS:
+            spread = (fast_ma / slow_ma - 1) * 100 if slow_ma else 0.0
+            if spread >= entry_threshold:
+                held = 1.0
+            elif spread <= exit_threshold:
+                held = 0.0
+        elif custom_signal == CustomSignalKind.RSI:
+            rsi = _rsi(closes, end, fast)
+            if rsi is not None and rsi <= entry_threshold:
+                held = 1.0
+            elif rsi is not None and rsi >= exit_threshold:
+                held = 0.0
+        elif custom_signal == CustomSignalKind.MOMENTUM:
+            momentum = _momentum(closes, end, fast)
+            if momentum is not None and momentum >= entry_threshold:
+                held = 1.0
+            elif momentum is not None and momentum <= exit_threshold:
+                held = 0.0
+        else:
+            window = closes[end - slow : end]
+            sigma = _std(window)
+            z_score = 0.0 if sigma == 0 else (closes[end - 1] - _safe_mean(window)) / sigma
+            if z_score <= -abs(entry_threshold):
+                held = 1.0
+            elif z_score >= exit_threshold:
+                held = 0.0
         result[i] = held
     return result
+
+
+def _signals_for_request(
+    closes: Sequence[float],
+    request: ForensicsRequest,
+    *,
+    fast: int | None = None,
+    slow: int | None = None,
+    lagged: bool = True,
+) -> list[float]:
+    return _signals(
+        closes,
+        request.strategy,
+        fast if fast is not None else request.fast_window,
+        slow if slow is not None else request.slow_window,
+        custom_signal=request.custom_signal,
+        entry_threshold=request.entry_threshold,
+        exit_threshold=request.exit_threshold,
+        lagged=lagged,
+    )
 
 
 def _strategy_returns(
@@ -206,7 +305,7 @@ class ForensicsService:
                 f"need at least {request.slow_window + 60} daily observations."
             )
 
-        signals = _signals(closes, request.strategy, request.fast_window, request.slow_window)
+        signals = _signals_for_request(closes, request)
         strategy_returns, trades = _strategy_returns(closes, signals, request.transaction_cost_bps)
         benchmark_returns = [0.0] + [
             bench_closes[i] / bench_closes[i - 1] - 1.0 for i in range(1, len(bench_closes))
@@ -257,7 +356,7 @@ class ForensicsService:
             benchmark=request.benchmark.upper(),
             period=request.period,
             strategy=request.strategy,
-            strategy_label=self._strategy_label(request.strategy, request.lang),
+            strategy_label=self._strategy_label(request),
             data_start=dates[0],
             data_end=dates[-1],
             observation_count=len(dates),
@@ -328,7 +427,7 @@ class ForensicsService:
         for ratio, label in variants:
             fast = max(3, round(request.fast_window * ratio))
             slow = max(fast + 5, round(request.slow_window * ratio))
-            signals = _signals(closes, request.strategy, fast, slow)
+            signals = _signals_for_request(closes, request, fast=fast, slow=slow)
             returns, _ = _strategy_returns(closes, signals, request.transaction_cost_bps)
             result.append(
                 SensitivityPoint(
@@ -392,13 +491,7 @@ class ForensicsService:
         regimes: Sequence[RegimeResult],
     ) -> list[AuditCheck]:
         lang = request.lang
-        leaky_signals = _signals(
-            closes,
-            request.strategy,
-            request.fast_window,
-            request.slow_window,
-            lagged=False,
-        )
+        leaky_signals = _signals_for_request(closes, request, lagged=False)
         leaky_returns, _ = _strategy_returns(closes, leaky_signals, request.transaction_cost_bps)
         leakage_uplift = _pct(_compound(leaky_returns) - _compound(strategy))
         leakage_score = max(70, round(96 - max(0.0, leakage_uplift) * 0.4))
@@ -570,13 +663,19 @@ class ForensicsService:
         )
 
     @staticmethod
-    def _strategy_label(kind: StrategyKind, lang: str) -> str:
+    def _strategy_label(request: ForensicsRequest) -> str:
         labels = {
             StrategyKind.MA_CROSS: ("双均线趋势", "Dual moving average"),
             StrategyKind.BREAKOUT: ("区间突破", "Range breakout"),
             StrategyKind.MEAN_REVERSION: ("均值回归", "Mean reversion"),
+            StrategyKind.RSI_REVERSION: ("RSI 反转", "RSI reversal"),
+            StrategyKind.MOMENTUM_TREND: ("动量趋势", "Momentum trend"),
+            StrategyKind.BOLLINGER_REVERSION: ("布林带反转", "Bollinger reversion"),
+            StrategyKind.CUSTOM: ("自定义规则", "Custom rule"),
         }
-        return labels[kind][0 if lang == "zh" else 1]
+        if request.strategy == StrategyKind.CUSTOM and request.strategy_name.strip():
+            return request.strategy_name.strip()
+        return labels[request.strategy][0 if request.lang == "zh" else 1]
 
     @staticmethod
     def _fallback_narrative(

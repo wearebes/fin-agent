@@ -1,4 +1,12 @@
-export type StrategyKind = 'ma_cross' | 'breakout' | 'mean_reversion'
+export type StrategyKind =
+  | 'ma_cross'
+  | 'breakout'
+  | 'mean_reversion'
+  | 'rsi_reversion'
+  | 'momentum_trend'
+  | 'bollinger_reversion'
+  | 'custom'
+export type CustomSignalKind = 'ma_cross' | 'rsi' | 'momentum' | 'bollinger'
 export type AuditStatus = 'pass' | 'warning' | 'fail'
 
 export interface ForensicsInput {
@@ -8,6 +16,10 @@ export interface ForensicsInput {
   strategy: StrategyKind
   fast_window: number
   slow_window: number
+  custom_signal: CustomSignalKind
+  entry_threshold: number
+  exit_threshold: number
+  strategy_name: string
   transaction_cost_bps: number
   lang: 'zh' | 'en'
 }
