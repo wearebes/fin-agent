@@ -39,18 +39,14 @@ def _row_to_result(row: RunRow) -> RunResult:
 def _result_to_row(result: RunResult) -> RunRow:
     return RunRow(
         run_id=result.run_id,
-        status=result.status.value if hasattr(result.status, "value") else str(result.status),
-        environment=result.environment.value
-        if hasattr(result.environment, "value")
-        else str(result.environment),
+        status=result.status.value,
+        environment=result.environment.value,
         request_json=result.request.model_dump_json(),
         providers_json=json.dumps(result.providers),
         planned_stages_json=json.dumps(result.planned_stages),
         report=result.report,
         plan_json=result.plan.model_dump_json() if result.plan else None,
-        evidence_json=json.dumps(
-            [e.model_dump(mode="json") for e in result.evidence]
-        ),
+        evidence_json=json.dumps([e.model_dump(mode="json") for e in result.evidence]),
         trace_records=[
             TraceRecordRow(stage=t.stage, detail=t.detail, seq=i)
             for i, t in enumerate(result.trace)
@@ -92,9 +88,7 @@ class SQLAlchemyRunStore:
         with Session(self._engine) as session:
             row = session.get(RunRow, run_id)
             if row is None:
-                logger.warning(
-                    "save_context: no run row for run_id=%s, skipping", run_id
-                )
+                logger.warning("save_context: no run row for run_id=%s, skipping", run_id)
                 return
             row.context_json = context_json
             session.commit()

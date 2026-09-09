@@ -4,7 +4,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from fin_agent.domain.types import TraceRecord
+from fin_agent.domain.types import ResearchProgress, TraceRecord
 from fin_agent.workflows.research.config import ResearchWorkflowConfig
 from fin_agent.workflows.research.context import ResearchContext
 from fin_agent.workflows.research.stages import StageDeps
@@ -19,6 +19,7 @@ from fin_agent.workflows.research.stages.pipeline import (
 logger = logging.getLogger(__name__)
 
 StageCallable = Callable[[ResearchContext, StageDeps], Awaitable[ResearchContext]]
+ProgressCallback = Callable[[ResearchProgress], None]
 
 _STAGE_REGISTRY: dict[str, StageCallable] = {
     "intake": intake,
@@ -62,14 +63,22 @@ async def execute_workflow(
     *,
     stages: list[str] | None = None,
     extra_stage_kwargs: dict[str, Any] | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> ResearchContext:
     stage_plan = stages if stages is not None else build_stage_plan(deps.config)
     for stage_name in stage_plan:
+        if stage_name == "review" and "synthesize" in ctx.failed_stages:
+            ctx.trace.append(TraceRecord(stage="review", detail="Skipped: synthesis unavailable"))
+            if on_progress:
+                on_progress(ResearchProgress(stage=stage_name, status="skipped"))
+            continue
         fn = _STAGE_REGISTRY.get(stage_name)
         if fn is None:
             logger.warning("Unknown stage '%s', skipping", stage_name)
             continue
         logger.info("Executing stage: %s (run_id=%s)", stage_name, ctx.run_id)
+        if on_progress:
+            on_progress(ResearchProgress(stage=stage_name, status="running"))
         try:
             if stage_name == "persist" and extra_stage_kwargs:
                 ctx = await fn(ctx, deps, **extra_stage_kwargs)
@@ -77,7 +86,12 @@ async def execute_workflow(
                 ctx = await fn(ctx, deps)
         except Exception:
             logger.exception("Stage '%s' failed for run_id=%s", stage_name, ctx.run_id)
-            ctx.trace.append(
-                TraceRecord(stage=stage_name, detail="Stage failed with error")
+            ctx.fail(stage_name, "Stage failed with error")
+        if on_progress:
+            on_progress(
+                ResearchProgress(
+                    stage=stage_name,
+                    status="failed" if stage_name in ctx.failed_stages else "completed",
+                )
             )
     return ctx

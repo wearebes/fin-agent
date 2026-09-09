@@ -44,13 +44,24 @@ export default function Composer({
   lang,
   disabled,
   onSubmit,
+  draft,
+  onChange,
+  useHistory,
+  onHistoryChange,
+  hasHistory,
+  allowPlanMode,
 }: {
   lang: Lang
   disabled: boolean
   onSubmit: (question: string, ticker: string | null, selectedSkill: string | null, mode: ResearchMode) => void
+  draft: { question: string; ticker: string }
+  onChange: (draft: { question: string; ticker: string }) => void
+  useHistory: boolean
+  onHistoryChange: (enabled: boolean) => void
+  hasHistory: boolean
+  allowPlanMode: boolean
 }) {
-  const [question, setQuestion] = useState('')
-  const [ticker, setTicker] = useState('')
+  const { question, ticker } = draft
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerQuery, setPickerQuery] = useState('')
@@ -117,7 +128,7 @@ export default function Composer({
       let after = question.slice(token.end)
       if (before.endsWith(' ') && after.startsWith(' ')) after = after.slice(1)
       pendingCaretRef.current = token.start
-      setQuestion(before + after)
+      onChange({ ...draft, question: before + after })
     }
     setSelectedSkill(skill)
     closePicker()
@@ -131,16 +142,20 @@ export default function Composer({
   const submit = () => {
     const q = question.trim()
     if (!q || disabled) return
-    onSubmit(q, ticker.trim() || null, selectedSkill?.name ?? null, planMode ? 'plan' : 'auto')
-    setQuestion('')
-    setTicker('')
+    onSubmit(
+      q,
+      ticker.trim() || null,
+      selectedSkill?.name ?? null,
+      allowPlanMode && planMode ? 'plan' : 'auto',
+    )
+    onChange({ question: '', ticker: '' })
     setSelectedSkill(null)
     closePicker()
   }
 
   const onChangeQuestion = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
-    setQuestion(value)
+    onChange({ ...draft, question: value })
     const caret = e.target.selectionStart ?? value.length
     const token = findSlashToken(value, caret)
     if (token) {
@@ -182,7 +197,7 @@ export default function Composer({
         return
       }
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !e.nativeEvent.isComposing) {
       e.preventDefault()
       submit()
     }
@@ -240,6 +255,7 @@ export default function Composer({
           ref={textareaRef}
           className="composer-q"
           placeholder={t('phQ')}
+          aria-label={t('questionLabel')}
           value={question}
           onChange={onChangeQuestion}
           onKeyDown={onKeyDown}
@@ -252,8 +268,9 @@ export default function Composer({
             className="composer-ticker"
             type="text"
             placeholder={t('phT')}
+            aria-label={t('tickerLabel')}
             value={ticker}
-            onChange={(e) => setTicker(e.target.value)}
+            onChange={(e) => onChange({ ...draft, ticker: e.target.value })}
             disabled={disabled}
           />
           <span className="composer-hint">{t('composerHint')}</span>
@@ -269,16 +286,18 @@ export default function Composer({
             <span className="thinking-toggle-label">{t('researchProcess')}</span>
           </button>
 
-          <button
-            type="button"
-            className={`thinking-toggle${planMode ? ' active' : ''}`}
-            onClick={() => setPlanMode(!planMode)}
-            title={planMode ? t('planModeOn') : t('planModeOff')}
-            aria-pressed={planMode}
-          >
-            <ListChecks size={13} />
-            <span className="thinking-toggle-label">{t('planMode')}</span>
-          </button>
+          {allowPlanMode && (
+            <button
+              type="button"
+              className={`thinking-toggle${planMode ? ' active' : ''}`}
+              onClick={() => setPlanMode(!planMode)}
+              title={planMode ? t('planModeOn') : t('planModeOff')}
+              aria-pressed={planMode}
+            >
+              <ListChecks size={13} />
+              <span className="thinking-toggle-label">{t('planMode')}</span>
+            </button>
+          )}
 
           <button
             className="send-btn"
@@ -289,7 +308,15 @@ export default function Composer({
             <span>{disabled ? t('sending') : t('send')}</span>
           </button>
         </div>
+        {hasHistory && (
+          <label className="context-option">
+            <input type="checkbox" checked={useHistory} disabled={disabled}
+              onChange={(event) => onHistoryChange(event.target.checked)} />
+            {t('useHistory')}
+          </label>
+        )}
       </div>
+      <p className="composer-note">{t('researchNotice')}</p>
     </div>
   )
 }

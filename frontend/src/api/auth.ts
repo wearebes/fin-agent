@@ -37,9 +37,7 @@ export interface ChangePasswordInput {
   new_password: string
 }
 
-const BASE = ''
-
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
@@ -48,7 +46,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch(`${BASE}${path}`, { ...options, headers })
+  const res = await fetch(path, { ...options, headers })
   if (!res.ok) {
     let detail = `HTTP ${res.status}`
     try {
@@ -57,6 +55,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     } catch {}
     throw new Error(detail)
   }
+  if (res.status === 204) return undefined as T
   return res.json() as Promise<T>
 }
 

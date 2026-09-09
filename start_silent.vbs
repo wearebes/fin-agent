@@ -29,10 +29,9 @@ Function IsReady()
     Dim request
     On Error Resume Next
     Set request = CreateObject("MSXML2.XMLHTTP.6.0")
-    request.Open "GET", BaseUrl & "/openapi.json", False
+    request.Open "GET", BaseUrl & "/healthz", False
     request.Send
-    IsReady = (Err.Number = 0 And request.Status = 200 And _
-        InStr(request.ResponseText, "/v1/quant/forensics/runs") > 0)
+    IsReady = (Err.Number = 0 And request.Status = 200)
     Err.Clear
     On Error GoTo 0
 End Function

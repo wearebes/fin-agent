@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { User, LogIn, UserPlus, KeyRound, Puzzle } from 'lucide-react'
+import { User, LogIn, UserPlus, KeyRound, Cable, Puzzle } from 'lucide-react'
 import { translate } from '../../i18n'
 import { useWorkspace } from '../../store/workspace'
 
@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { path: '/user/profile', icon: User, labelKey: 'userProfile' },
   { path: '/user/password', icon: KeyRound, labelKey: 'userPassword' },
   { path: '/user/skills', icon: Puzzle, labelKey: 'navSkills' },
+  { path: '/user/models', icon: Cable, labelKey: 'modelApiSettings' },
 ]
 
 export default function UserSidebar() {

@@ -7,6 +7,8 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from fin_agent.adapters.llm.codex import LocalCodex
+from fin_agent.adapters.llm.disabled import DisabledLLM
 from fin_agent.adapters.llm.openai.client import OpenAIClient
 from fin_agent.adapters.market_data.router import MarketDataRouter
 from fin_agent.adapters.search.exa.client import ExaSearchClient
@@ -15,6 +17,7 @@ from fin_agent.bootstrap.settings import AppSettings, collect_runtime_validation
 from fin_agent.domain.constants import SearchProviderName
 from fin_agent.services.auth import AuthConfig, AuthService
 from fin_agent.services.forensics import ForensicsService
+from fin_agent.services.model_connections import ModelConnections
 from fin_agent.services.research import ResearchService
 from fin_agent.services.skill_router import SkillDispatcher
 from fin_agent.skills import SkillRegistry
@@ -42,6 +45,8 @@ class Container:
     research_service: ResearchService
     forensics_service: ForensicsService
     auth_service: AuthService
+    model_connections: ModelConnections
+    local_codex: LocalCodex
     # Pure-descriptor projection of skill_catalog, consumed only by
     # GET /v1/skills. Intentionally NOT part of StageDeps — no stage browses
     # it; ResearchService reaches the full catalog only through the dispatcher.
@@ -78,35 +83,21 @@ class Container:
         return len(self.skill_registry.list())
 
 
-def _build_run_store(settings: AppSettings) -> RunStore:
+def _build_stores(settings: AppSettings) -> tuple[RunStore, UserStore]:
     db = settings.database
-    if db.backend == "sql":
-        db_url = db.url
-        if db_url.startswith("sqlite:///./"):
-            relative_part = db_url[len("sqlite:///./"):]
-            db_dir = Path(relative_part).parent
-            db_dir.mkdir(parents=True, exist_ok=True)
-        store = SQLAlchemyRunStore(database_url=db_url, echo=db.echo)
-        store.create_tables()
-        logger.info("Using SQLAlchemyRunStore (url=%s)", db_url)
-        return store
-    return InMemoryRunStore()
+    if db.backend != "sql":
+        logger.info("Using in-memory run and user stores")
+        return InMemoryRunStore(), InMemoryUserStore()
 
-
-def _build_user_store(settings: AppSettings) -> UserStore:
-    db = settings.database
-    if db.backend == "sql":
-        db_url = db.url
-        if db_url.startswith("sqlite:///./"):
-            relative_part = db_url[len("sqlite:///./"):]
-            db_dir = Path(relative_part).parent
-            db_dir.mkdir(parents=True, exist_ok=True)
-        store = SQLAlchemyUserStore(database_url=db_url, echo=db.echo)
-        store.create_tables()
-        logger.info("Using SQLAlchemyUserStore (url=%s)", db_url)
-        return store
-    logger.info("Using InMemoryUserStore")
-    return InMemoryUserStore()
+    if db.url.startswith("sqlite:///./"):
+        Path(db.url.removeprefix("sqlite:///./")).parent.mkdir(parents=True, exist_ok=True)
+    run_store = SQLAlchemyRunStore(database_url=db.url, echo=db.echo)
+    user_store = SQLAlchemyUserStore(database_url=db.url, echo=db.echo)
+    # Each store owns its engine, including a separate database for SQLite :memory:.
+    run_store.create_tables()
+    user_store.create_tables()
+    logger.info("Using SQLAlchemy run and user stores")
+    return run_store, user_store
 
 
 def _build_auth_service(user_store: UserStore, settings: AppSettings) -> AuthService:
@@ -119,13 +110,19 @@ def _build_auth_service(user_store: UserStore, settings: AppSettings) -> AuthSer
     return AuthService(user_store=user_store, config=config)
 
 
-def _build_search_provider(settings: AppSettings):
+def _build_search_provider(settings: AppSettings) -> ExaSearchClient | TavilySearchClient:
     provider = settings.providers.default_selection.search
     if provider == SearchProviderName.TAVILY:
+        if not settings.tavily.api_key and settings.search.api_key:
+            logger.info("Tavily key unavailable; using configured Exa client")
+            return ExaSearchClient(settings.search)
         if not settings.tavily.enabled:
             logger.info("TavilySearchClient disabled via config, returning no-op client")
             return TavilySearchClient(settings.tavily.model_copy(update={"api_key": None}))
         logger.info("Using TavilySearchClient")
+        return TavilySearchClient(settings.tavily)
+    if not settings.search.api_key and settings.tavily.api_key:
+        logger.info("Exa key unavailable; using configured Tavily client")
         return TavilySearchClient(settings.tavily)
     if not settings.search.enabled:
         logger.info("ExaSearchClient disabled via config, returning no-op client")
@@ -137,13 +134,16 @@ def _build_search_provider(settings: AppSettings):
 def build_container(settings: AppSettings) -> Container:
     errors = collect_runtime_validation_errors(settings)
     if errors:
-        raise RuntimeSettingsError('\n'.join(errors))
+        raise RuntimeSettingsError("\n".join(errors))
 
-    run_store = _build_run_store(settings)
-    user_store = _build_user_store(settings)
+    run_store, user_store = _build_stores(settings)
     auth_service = _build_auth_service(user_store, settings)
 
-    llm = OpenAIClient(settings.openai)
+    llm = (
+        OpenAIClient(settings.openai)
+        if settings.runtime.allow_system_model and not settings.runtime.commercial_mode
+        else DisabledLLM()
+    )
     search = _build_search_provider(settings)
     market_data = MarketDataRouter(
         yfinance_config=settings.market_data,
@@ -178,7 +178,7 @@ def build_container(settings: AppSettings) -> Container:
         user_store=user_store,
         research_service=ResearchService(
             environment=settings.app.environment,
-            providers=settings.providers.default_selection.model_dump(mode='json'),
+            providers=settings.providers.default_selection.model_dump(mode="json"),
             run_store=run_store,
             deps=deps,
             skill_dispatcher=skill_dispatcher,
@@ -187,4 +187,9 @@ def build_container(settings: AppSettings) -> Container:
         auth_service=auth_service,
         skill_registry=skill_catalog.to_registry(),
         skill_catalog=skill_catalog,
+        model_connections=ModelConnections(
+            settings.runtime.llm_allowed_hosts,
+            proxy_url=settings.proxy.https or settings.proxy.http,
+        ),
+        local_codex=LocalCodex(settings.codex),
     )

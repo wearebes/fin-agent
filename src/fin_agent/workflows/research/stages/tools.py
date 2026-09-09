@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -8,7 +9,15 @@ from fin_agent.adapters.market_data import MarketDataProvider
 from fin_agent.adapters.search import SearchProvider
 from fin_agent.domain.constants import AssetType, DataFrequency, FinancialStatementType
 from fin_agent.domain.types import ToolDefinition
+from fin_agent.workflows.research.evidence import compact_records, format_financials
 from fin_agent.workflows.research.stages import ToolRegistry
+from fin_agent.workflows.research.tool_inputs import (
+    CryptoInput,
+    FinancialsInput,
+    MarketDataInput,
+    SearchInput,
+    TickerInput,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,17 +39,17 @@ class SearchTool:
         query = kwargs.get("query", "")
         max_results = kwargs.get("max_results")
         try:
-            resp = self._search.search(query, max_results=max_results)
+            resp = await asyncio.to_thread(self._search.search, query, max_results=max_results)
             items = []
             for r in resp.results:
                 item: dict[str, Any] = {"title": r.title, "url": r.url}
                 if r.text:
                     item["text"] = _truncate(r.text, 2000)
                 items.append(item)
-            return json.dumps(items, ensure_ascii=False)
+            return compact_records(items)
         except Exception:
             logger.exception("search tool failed for query=%s", query)
-            return json.dumps([])
+            return "[]"
 
 
 class MarketDataTool:
@@ -52,8 +61,12 @@ class MarketDataTool:
         asset_type = AssetType(kwargs.get("asset_type", "stock"))
         period = kwargs.get("period")
         try:
-            resp = self._md.get_market_data(
-                ticker, asset_type, frequency=DataFrequency.DAILY, period=period
+            resp = await asyncio.to_thread(
+                self._md.get_market_data,
+                ticker,
+                asset_type,
+                frequency=DataFrequency(kwargs.get("frequency", "daily")),
+                period=period,
             )
             rows = [
                 {
@@ -66,10 +79,10 @@ class MarketDataTool:
                 }
                 for p in resp.data[-60:]
             ]
-            return json.dumps(rows, ensure_ascii=False)
+            return compact_records(rows)
         except Exception:
             logger.exception("market_data tool failed for ticker=%s", ticker)
-            return json.dumps([])
+            return "[]"
 
 
 class FinancialsTool:
@@ -78,16 +91,18 @@ class FinancialsTool:
 
     async def __call__(self, **kwargs: Any) -> str:
         ticker = kwargs.get("ticker", "")
-        stmt_type = FinancialStatementType(
-            kwargs.get("statement_type", "income_statement")
-        )
+        stmt_type = FinancialStatementType(kwargs.get("statement_type", "income_statement"))
         try:
-            resp = self._md.get_financials(ticker, stmt_type)
-            rows = [r.model_dump(mode="json") for r in resp.data[-8:]]
-            return json.dumps(rows, ensure_ascii=False)
+            resp = await asyncio.to_thread(
+                self._md.get_financials,
+                ticker,
+                stmt_type,
+                frequency=DataFrequency(kwargs.get("frequency", "yearly")),
+            )
+            return format_financials(resp.data)
         except Exception:
             logger.exception("financials tool failed for ticker=%s", ticker)
-            return json.dumps([])
+            return "[]"
 
 
 class CompanyInfoTool:
@@ -97,11 +112,13 @@ class CompanyInfoTool:
     async def __call__(self, **kwargs: Any) -> str:
         ticker = kwargs.get("ticker", "")
         try:
-            info = self._md.get_company_info(ticker)
-            return json.dumps(info.model_dump(mode="json"), ensure_ascii=False)
+            info = await asyncio.to_thread(self._md.get_company_info, ticker)
+            if not info.model_dump(exclude_none=True, exclude={"ticker"}):
+                return "{}"
+            return json.dumps(info.model_dump(mode="json", exclude_none=True), ensure_ascii=False)
         except Exception:
             logger.exception("company_info tool failed for ticker=%s", ticker)
-            return json.dumps({})
+            return "{}"
 
 
 class AnalystTool:
@@ -111,13 +128,13 @@ class AnalystTool:
     async def __call__(self, **kwargs: Any) -> str:
         ticker = kwargs.get("ticker", "")
         try:
-            resp = self._md.get_analyst_data(ticker)
-            return json.dumps(
-                resp.model_dump(mode="json"), ensure_ascii=False
-            )
+            resp = await asyncio.to_thread(self._md.get_analyst_data, ticker)
+            if not resp.recommendations and not resp.earnings_estimates:
+                return "{}"
+            return json.dumps(resp.model_dump(mode="json"), ensure_ascii=False)
         except Exception:
             logger.exception("analyst tool failed for ticker=%s", ticker)
-            return json.dumps({})
+            return "{}"
 
 
 class CryptoTool:
@@ -128,7 +145,7 @@ class CryptoTool:
         ticker = kwargs.get("ticker", "")
         period = kwargs.get("period")
         try:
-            resp = self._md.get_crypto_data(ticker, period=period)
+            resp = await asyncio.to_thread(self._md.get_crypto_data, ticker, period=period)
             rows = [
                 {
                     "date": str(p.trade_date),
@@ -138,10 +155,10 @@ class CryptoTool:
                 }
                 for p in resp.data[-60:]
             ]
-            return json.dumps(rows, ensure_ascii=False)
+            return compact_records(rows)
         except Exception:
             logger.exception("crypto tool failed for ticker=%s", ticker)
-            return json.dumps([])
+            return "[]"
 
 
 def build_default_tool_registry(
@@ -173,6 +190,7 @@ def build_default_tool_registry(
             },
         ),
         SearchTool(search),
+        SearchInput,
     )
     registry.register(
         ToolDefinition(
@@ -202,6 +220,7 @@ def build_default_tool_registry(
             },
         ),
         MarketDataTool(market_data),
+        MarketDataInput,
     )
     registry.register(
         ToolDefinition(
@@ -228,6 +247,7 @@ def build_default_tool_registry(
             },
         ),
         FinancialsTool(market_data),
+        FinancialsInput,
     )
     registry.register(
         ToolDefinition(
@@ -248,6 +268,7 @@ def build_default_tool_registry(
             },
         ),
         CompanyInfoTool(market_data),
+        TickerInput,
     )
     registry.register(
         ToolDefinition(
@@ -267,6 +288,7 @@ def build_default_tool_registry(
             },
         ),
         AnalystTool(market_data),
+        TickerInput,
     )
     registry.register(
         ToolDefinition(
@@ -288,5 +310,6 @@ def build_default_tool_registry(
             },
         ),
         CryptoTool(market_data),
+        CryptoInput,
     )
     return registry

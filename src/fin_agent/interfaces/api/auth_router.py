@@ -77,6 +77,19 @@ def _extract_token(request: Request) -> str:
     return auth_header[7:]
 
 
+def _get_current_user(request: Request) -> UserInfo:
+    """Classify authentication failures consistently before business validation."""
+    token = _extract_token(request)
+    try:
+        return request.app.state.container.auth_service.get_current_user(token)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+
 def build_auth_router() -> APIRouter:
     router = APIRouter()
 
@@ -114,23 +127,13 @@ def build_auth_router() -> APIRouter:
 
     @router.get("/v1/auth/me", response_model=UserResponse, tags=["auth"])
     def get_current_user(request: Request) -> UserResponse:
-        auth_service = request.app.state.container.auth_service
-        token = _extract_token(request)
-        try:
-            user = auth_service.get_current_user(token)
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=str(e),
-            ) from e
-        return _user_to_response(user)
+        return _user_to_response(_get_current_user(request))
 
     @router.patch("/v1/auth/profile", response_model=UserResponse, tags=["auth"])
     def update_profile(payload: UpdateProfileRequest, request: Request) -> UserResponse:
         auth_service = request.app.state.container.auth_service
-        token = _extract_token(request)
+        current_user = _get_current_user(request)
         try:
-            current_user = auth_service.get_current_user(token)
             user = auth_service.update_profile(
                 current_user.id,
                 display_name=payload.display_name,
@@ -146,9 +149,8 @@ def build_auth_router() -> APIRouter:
     @router.post("/v1/auth/change-password", tags=["auth"])
     def change_password(payload: ChangePasswordRequest, request: Request) -> dict[str, str]:
         auth_service = request.app.state.container.auth_service
-        token = _extract_token(request)
+        current_user = _get_current_user(request)
         try:
-            current_user = auth_service.get_current_user(token)
             auth_service.change_password(
                 current_user.id,
                 old_password=payload.old_password,

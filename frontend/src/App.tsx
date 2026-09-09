@@ -12,6 +12,7 @@ import SkillsPage from './components/user/SkillsPage'
 import LocalSetupPage from './components/LocalSetupPage'
 import LocalWorkspaceSync from './components/LocalWorkspaceSync'
 import { getLocalSetupStatus, type LocalSetupStatus } from './api/local'
+import ModelSettingsPage from './components/user/ModelSettingsPage'
 import { useWorkspace } from './store/workspace'
 
 export default function App() {
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="profile" element={<ProfilePage />} />
           <Route path="password" element={<PasswordPage />} />
           <Route path="skills" element={<SkillsPage />} />
+          <Route path="models" element={<ModelSettingsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/chat" replace />} />
       </Routes>

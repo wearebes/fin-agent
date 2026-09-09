@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from uuid import uuid4
 
 from fin_agent.domain.constants import EnvironmentName, RunStatus
@@ -12,11 +13,12 @@ from fin_agent.storage.run_store import RunStore
 from fin_agent.workflows.research.config import ResearchWorkflowConfig
 from fin_agent.workflows.research.context import ResearchContext
 from fin_agent.workflows.research.graph import (
+    ProgressCallback,
     build_resume_stages,
     build_stage_plan,
     execute_workflow,
 )
-from fin_agent.workflows.research.stages import StageDeps
+from fin_agent.workflows.research.stages import LLMProvider, StageDeps
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,7 @@ class ResearchService:
         providers: dict[str, str],
         run_store: RunStore,
         deps: StageDeps,
-        skill_dispatcher: SkillDispatcher,
+        skill_dispatcher: SkillDispatcher | None = None,
     ) -> None:
         self._environment = environment
         self._providers = providers
@@ -50,9 +52,43 @@ class ResearchService:
     def workflow_config(self) -> ResearchWorkflowConfig:
         return self._deps.config
 
-    async def run(self, request: ResearchRequest) -> RunResult:
+    def with_llm(
+        self,
+        llm: LLMProvider,
+        *,
+        model: str,
+        protocol: str,
+        owner_user_id: str | None = None,
+        source: str = "personal",
+    ) -> ResearchService:
+        providers = {
+            **self._providers,
+            "llm": source,
+            "llm_model": model,
+            "llm_protocol": protocol,
+        }
+        if owner_user_id:
+            providers["owner_user_id"] = owner_user_id
+        return ResearchService(
+            self._environment,
+            providers,
+            self._run_store,
+            replace(self._deps, llm=llm),
+            self._skill_dispatcher,
+        )
+
+    async def run(
+        self,
+        request: ResearchRequest,
+        *,
+        on_progress: ProgressCallback | None = None,
+    ) -> RunResult:
         stages = build_stage_plan(self.workflow_config)
-        skill = self._skill_dispatcher.resolve(request.selected_skill)
+        skill = (
+            self._skill_dispatcher.resolve(request.selected_skill)
+            if self._skill_dispatcher
+            else None
+        )
         ctx = ResearchContext(
             request=request,
             skill_instructions=skill.body if skill else "",
@@ -64,17 +100,14 @@ class ResearchService:
                 ctx,
                 self._deps,
                 extra_stage_kwargs={"run_store": self._run_store},
+                on_progress=on_progress,
             )
         except Exception:
             logger.exception("Workflow execution failed for run_id=%s", ctx.run_id)
             status = RunStatus.FAILED
 
-        if status == RunStatus.COMPLETED:
-            failed_stages = [
-                t for t in ctx.trace if "failed" in t.detail.lower()
-            ]
-            if failed_stages:
-                status = RunStatus.FAILED
+        if ctx.failed_stages or not ctx.report.strip():
+            status = RunStatus.FAILED
 
         run = RunResult(
             run_id=ctx.run_id or uuid4().hex,
@@ -90,17 +123,31 @@ class ResearchService:
         self._run_store.save(run)
         return run
 
-    async def run_plan(self, request: ResearchRequest) -> RunResult:
+    async def run_plan(
+        self,
+        request: ResearchRequest,
+        *,
+        on_progress: ProgressCallback | None = None,
+    ) -> RunResult:
         """mode='plan' entry point: runs intake+plan only, persists the
         context for later resumption, and returns an awaiting-approval result."""
         stages = build_stage_plan(self.workflow_config)
-        skill = self._skill_dispatcher.resolve(request.selected_skill)
+        skill = (
+            self._skill_dispatcher.resolve(request.selected_skill)
+            if self._skill_dispatcher
+            else None
+        )
         ctx = ResearchContext(
             request=request,
             skill_instructions=skill.body if skill else "",
         )
         try:
-            ctx = await execute_workflow(ctx, self._deps, stages=["intake", "plan"])
+            ctx = await execute_workflow(
+                ctx,
+                self._deps,
+                stages=["intake", "plan"],
+                on_progress=on_progress,
+            )
         except Exception:
             logger.exception("Plan-stage execution failed for run_id=%s", ctx.run_id)
             run = RunResult(
@@ -134,9 +181,7 @@ class ResearchService:
         self._run_store.save_context(run.run_id, ctx.model_dump_json())
         return run
 
-    async def approve(
-        self, run_id: str, edited_plan: RetrievalPlan | None
-    ) -> RunResult | None:
+    async def approve(self, run_id: str, edited_plan: RetrievalPlan | None) -> RunResult | None:
         """Resumes a plan-mode run: loads the persisted context, optionally
         replaces `ctx.plan` with the user-edited version, and runs the
         remaining stages to completion. Returns None if no pending plan
@@ -164,12 +209,8 @@ class ResearchService:
             logger.exception("Resume execution failed for run_id=%s", run_id)
             status = RunStatus.FAILED
 
-        if status == RunStatus.COMPLETED:
-            failed_stages = [
-                t for t in ctx.trace if "failed" in t.detail.lower()
-            ]
-            if failed_stages:
-                status = RunStatus.FAILED
+        if ctx.failed_stages or not ctx.report.strip():
+            status = RunStatus.FAILED
 
         run = RunResult(
             run_id=ctx.run_id,
@@ -190,7 +231,4 @@ class ResearchService:
         return self._run_store.get(run_id)
 
     def get_trace(self, run_id: str) -> list[TraceRecord] | None:
-        result = self._run_store.get_trace(run_id)
-        if result is None:
-            return None
-        return result
+        return self._run_store.get_trace(run_id)

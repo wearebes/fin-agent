@@ -46,6 +46,7 @@ html {
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
 body {
@@ -53,6 +54,7 @@ body {
   color: var(--g900);
   line-height: 1.47;
   background: var(--g100);
+  overflow-x: hidden;
 }
 
 button {
@@ -246,20 +248,45 @@ button {
    Workspace layout
    ============================================================ */
 .workspace {
+  --chat-width: 1120px;
+  --chat-gutter: clamp(16px, 3vw, 32px);
   display: flex;
   height: 100vh;
+  height: 100dvh;
   padding-top: var(--topbar-h);
   background: var(--g100);
+  overflow: hidden;
 }
 
 .sidebar {
-  width: 280px;
+  width: 220px;
   flex-shrink: 0;
   border-right: 0.5px solid var(--g200);
   background: var(--g50);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+.sidebar[hidden] {
+  display: none;
+}
+.sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: .75rem;
+  color: var(--g600);
+}
+.sidebar-toggle:hover, .sidebar-toggle[aria-expanded="true"] {
+  background: var(--g100);
+  color: var(--g900);
+}
+.sidebar-toggle:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 .sidebar-head {
   display: flex;
@@ -412,14 +439,17 @@ button {
 .chat {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--g100);
+  background: var(--w);
 }
 .chat-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 14px;
+  flex-shrink: 0;
   height: 52px;
   padding: 0 24px;
   border-bottom: 0.5px solid var(--g200);
@@ -427,6 +457,8 @@ button {
   backdrop-filter: blur(8px);
 }
 .chat-title {
+  flex: 1;
+  min-width: 0;
   font-size: 0.92rem;
   font-weight: 700;
   color: var(--g900);
@@ -455,21 +487,24 @@ button {
 
 .messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable both-edges;
   padding: 28px 0;
 }
 .messages-inner {
-  max-width: 760px;
+  max-width: var(--chat-width);
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 var(--chat-gutter);
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 24px;
 }
 
 .empty-state {
-  max-width: 460px;
-  margin: 8vh auto 0;
+  max-width: 790px;
+  margin: 3vh auto 0;
   text-align: center;
   padding: 0 24px;
 }
@@ -493,8 +528,9 @@ button {
   margin-bottom: 10px;
 }
 .empty-desc {
-  font-size: 0.92rem;
-  color: var(--g500);
+  font-size: 1rem;
+  color: var(--g600);
+  letter-spacing: .04em;
   line-height: 1.6;
 }
 
@@ -512,6 +548,7 @@ button {
   justify-content: flex-start;
 }
 .bubble {
+  min-width: 0;
   max-width: 100%;
 }
 .user-bubble {
@@ -556,10 +593,7 @@ button {
 .assistant-bubble {
   width: 100%;
   background: var(--w);
-  border: 0.5px solid var(--g200);
-  border-radius: 4px 18px 18px 18px;
-  padding: 24px 26px;
-  box-shadow: 0 0.5px 4px rgba(0, 0, 0, 0.03), 0 8px 28px rgba(0, 0, 0, 0.05);
+  padding: 12px 0;
 }
 
 /* ============================================================
@@ -951,28 +985,29 @@ button {
    ============================================================ */
 .composer {
   flex-shrink: 0;
-  padding: 14px 24px 22px;
-  background: linear-gradient(180deg, rgba(245, 245, 247, 0), var(--g100) 40%);
+  width: 100%;
+  max-width: var(--chat-width);
+  margin: 0 auto;
+  padding: 10px var(--chat-gutter) 16px;
 }
 .composer-card {
   position: relative;
-  max-width: 760px;
-  margin: 0 auto;
   background: var(--w);
   border: 0.5px solid var(--g200);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   padding: 14px 16px 12px;
-  box-shadow: 0 0.5px 4px rgba(0, 0, 0, 0.03), 0 8px 28px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.04);
   transition: box-shadow 0.3s var(--ease);
 }
 .composer-card:focus-within {
-  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.08), 0 8px 28px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.08);
 }
 .composer-q {
   width: 100%;
   border: none;
   outline: none;
   resize: none;
+  font-family: inherit;
   font-size: 0.92rem;
   line-height: 1.55;
   color: var(--g900);
@@ -1290,8 +1325,13 @@ button {
 @media (max-width: 768px) {
   .workspace {
     flex-direction: column;
+  }
+  .workspace:has(.sidebar:not([hidden])) {
     height: auto;
-    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  .workspace:has(.sidebar:not([hidden])) .chat {
+    min-height: 60vh;
   }
   .sidebar {
     width: 100%;
@@ -1299,8 +1339,12 @@ button {
     border-right: none;
     border-bottom: 0.5px solid var(--g200);
   }
-  .chat {
-    min-height: 60vh;
+  .chat-header {
+    padding: 0 12px;
+    gap: 10px;
+  }
+  .sidebar-toggle span {
+    display: none;
   }
   .quant-grid {
     grid-template-columns: 1fr;
@@ -1431,6 +1475,7 @@ button {
 
 .user-main {
   flex: 1;
+  min-width: 0;
   padding: 40px;
   overflow-y: auto;
   background: #fff;

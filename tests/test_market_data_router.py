@@ -70,10 +70,7 @@ def _financial_resp(
 def _analyst_resp(ticker: str, firms: list[str]) -> AnalystResponse:
     return AnalystResponse(
         ticker=ticker,
-        recommendations=[
-            AnalystRecommendation(ticker=ticker, firm=f, rating="Buy")
-            for f in firms
-        ],
+        recommendations=[AnalystRecommendation(ticker=ticker, firm=f, rating="Buy") for f in firms],
     )
 
 
@@ -309,9 +306,7 @@ class TestGetCryptoDataRouting:
         yf_instance = MagicMock()
         MockAK.return_value = ak_instance
         MockYF.return_value = yf_instance
-        yf_instance.get_crypto_data.return_value = CryptoDataResponse(
-            ticker="BTC-USD", data=[]
-        )
+        yf_instance.get_crypto_data.return_value = CryptoDataResponse(ticker="BTC-USD", data=[])
 
         router = MarketDataRouter()
         router.get_crypto_data("BTC-USD")

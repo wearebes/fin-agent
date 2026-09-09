@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import bcrypt
@@ -10,18 +11,11 @@ import jwt
 from fin_agent.storage.user_store import UserInfo, UserStore
 
 
+@dataclass(slots=True, eq=False, repr=False)
 class AuthConfig:
-    __slots__ = ("secret_key", "algorithm", "access_token_expire_minutes")
-
-    def __init__(
-        self,
-        secret_key: str,
-        algorithm: str = "HS256",
-        access_token_expire_minutes: int = 60 * 24,
-    ) -> None:
-        self.secret_key = secret_key
-        self.algorithm = algorithm
-        self.access_token_expire_minutes = access_token_expire_minutes
+    secret_key: str
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24
 
 
 def hash_password(password: str) -> str:
@@ -129,7 +123,7 @@ class AuthService:
                 self._config.secret_key,
                 algorithms=[self._config.algorithm],
             )
-        except jwt.ExpiredSignatureError as exc:
-            raise ValueError("Token has expired") from exc
-        except jwt.InvalidTokenError as exc:
-            raise ValueError("Invalid token") from exc
+        except jwt.ExpiredSignatureError:
+            raise ValueError("Token has expired") from None
+        except jwt.InvalidTokenError:
+            raise ValueError("Invalid token") from None

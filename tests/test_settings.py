@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 
 from fin_agent.bootstrap.app import create_default_app
 from fin_agent.bootstrap.cli import app as cli_app
-from fin_agent.bootstrap.settings import export_env_example, load_settings
+from fin_agent.bootstrap.settings import AppSettings, export_env_example, load_settings
 
 
 def _set_required_provider_env(monkeypatch) -> None:
@@ -29,9 +29,12 @@ def test_load_settings_merges_layered_yaml_and_env(monkeypatch) -> None:
     assert settings.source_files[1].name == "test.yaml"
 
 
-def test_export_env_example_matches_repository_file() -> None:
-    env_example_path = Path(".env.example")
-    assert export_env_example() == env_example_path.read_text(encoding="utf-8")
+def test_env_examples_load_without_unknown_fields(tmp_path: Path) -> None:
+    # The curated example need not match generated comments byte-for-byte.
+    AppSettings(_env_file=Path(".env.example"))
+    generated = tmp_path / "generated.env"
+    generated.write_text(export_env_example(), encoding="utf-8")
+    AppSettings(_env_file=generated)
 
 
 def test_config_modules_import_without_bootstrap() -> None:
@@ -61,9 +64,8 @@ def test_api_and_cli_read_the_same_settings(monkeypatch) -> None:
     assert result.exit_code == 0
     doctor_report = json.loads(result.stdout)
     assert doctor_report["environment"] == app_settings.app.environment.value
-    assert (
-        doctor_report["providers"]
-        == app_settings.providers.default_selection.model_dump(mode="json")
+    assert doctor_report["providers"] == app_settings.providers.default_selection.model_dump(
+        mode="json"
     )
 
 

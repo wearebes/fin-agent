@@ -67,9 +67,7 @@ class StubLLM:
             self._call_count += 1
             return resp
         # Default terminal response: no tool calls -> tool-exec loop ends.
-        return LLMResponse(
-            message=LLMMessage(role="assistant", content="No further tools needed.")
-        )
+        return LLMResponse(message=LLMMessage(role="assistant", content="No further tools needed."))
 
 
 class _CapturingLLM(StubLLM):
@@ -89,18 +87,20 @@ class _CapturingLLM(StubLLM):
         return await super().chat(messages, **kwargs)
 
 
-PLAN_JSON = json.dumps({
-    "search_queries": [{"query": "AAPL analysis", "max_results": 3}],
-    "market_data": [
-        {"ticker": "AAPL", "asset_type": "stock", "frequency": "daily", "period": "1y"}
-    ],
-    "financials": [
-        {"ticker": "AAPL", "statement_type": "income_statement", "frequency": "yearly"}
-    ],
-    "fetch_company_info_tickers": ["AAPL"],
-    "fetch_analyst_data_tickers": ["AAPL"],
-    "fetch_crypto_tickers": [],
-})
+PLAN_JSON = json.dumps(
+    {
+        "search_queries": [{"query": "AAPL analysis", "max_results": 3}],
+        "market_data": [
+            {"ticker": "AAPL", "asset_type": "stock", "frequency": "daily", "period": "1y"}
+        ],
+        "financials": [
+            {"ticker": "AAPL", "statement_type": "income_statement", "frequency": "yearly"}
+        ],
+        "fetch_company_info_tickers": ["AAPL"],
+        "fetch_analyst_data_tickers": ["AAPL"],
+        "fetch_crypto_tickers": [],
+    }
+)
 
 SYNTHESIZE_RESPONSE = LLMResponse(
     message=LLMMessage(
@@ -262,9 +262,7 @@ def _make_deps(
         llm=StubLLM(llm_responses),
         search=resolved_search,
         market_data=resolved_market_data,
-        tool_registry=build_default_tool_registry(
-            resolved_search, resolved_market_data
-        ),
+        tool_registry=build_default_tool_registry(resolved_search, resolved_market_data),
         config=config,
     )
 
@@ -362,8 +360,13 @@ class TestBuildStagePlan:
     def test_with_review(self, config: ResearchWorkflowConfig):
         stages = build_stage_plan(config)
         expected = [
-            "intake", "plan", "retrieve", "tool-exec",
-            "synthesize", "review", "persist",
+            "intake",
+            "plan",
+            "retrieve",
+            "tool-exec",
+            "synthesize",
+            "review",
+            "persist",
         ]
         assert stages == expected
 
@@ -399,9 +402,7 @@ class TestIntakeStage:
 
     @pytest.mark.asyncio
     async def test_intake_with_ticker(self, config: ResearchWorkflowConfig):
-        ctx = ResearchContext(
-            request=ResearchRequest(question="Analyze AAPL", ticker="AAPL")
-        )
+        ctx = ResearchContext(request=ResearchRequest(question="Analyze AAPL", ticker="AAPL"))
         deps = _make_deps(config)
         result = await intake(ctx, deps)
         assert "AAPL" in result.trace[0].detail
@@ -409,9 +410,12 @@ class TestIntakeStage:
 
 class TestPlanStage:
     @pytest.mark.asyncio
-    async def test_plan_parses_llm_json(self, config: ResearchWorkflowConfig):
+    @pytest.mark.parametrize("fenced", [False, True])
+    async def test_plan_parses_llm_json(self, config: ResearchWorkflowConfig, fenced):
         plan_response = LLMResponse(
-            message=LLMMessage(role="assistant", content=PLAN_JSON)
+            message=LLMMessage(
+                role="assistant", content=f"```json\n{PLAN_JSON}\n```" if fenced else PLAN_JSON
+            )
         )
         ctx = ResearchContext(request=ResearchRequest(question="Analyze AAPL", ticker="AAPL"))
         deps = _make_deps(config, llm_responses=[plan_response])
@@ -424,9 +428,7 @@ class TestPlanStage:
 
     @pytest.mark.asyncio
     async def test_plan_fallback_on_bad_llm(self, config: ResearchWorkflowConfig):
-        bad_response = LLMResponse(
-            message=LLMMessage(role="assistant", content="not json at all")
-        )
+        bad_response = LLMResponse(message=LLMMessage(role="assistant", content="not json at all"))
         ctx = ResearchContext(request=ResearchRequest(question="Analyze AAPL", ticker="AAPL"))
         deps = _make_deps(config, llm_responses=[bad_response])
         result = await plan(ctx, deps)
@@ -434,9 +436,7 @@ class TestPlanStage:
         assert "AAPL" in result.plan.market_data[0].ticker
 
     @pytest.mark.asyncio
-    async def test_plan_prompt_includes_tool_catalog(
-        self, config: ResearchWorkflowConfig
-    ):
+    async def test_plan_prompt_includes_tool_catalog(self, config: ResearchWorkflowConfig):
         captured: dict[str, list] = {}
 
         class CapturingLLM(StubLLM):
@@ -541,9 +541,7 @@ class TestToolExecStage:
         assert any("no further tool calls" in d for d in details)
 
     @pytest.mark.asyncio
-    async def test_tool_exec_parallel_then_final(
-        self, config: ResearchWorkflowConfig
-    ):
+    async def test_tool_exec_parallel_then_final(self, config: ResearchWorkflowConfig):
         from fin_agent.domain.types import ToolCall
         from fin_agent.workflows.research.context import (
             MarketDataPlanItem,
@@ -621,9 +619,7 @@ class TestToolExecStage:
             ),
         )
         deps = _make_deps(config)
-        deps.llm = CapturingLLM(
-            [LLMResponse(message=LLMMessage(role="assistant", content="done"))]
-        )
+        deps.llm = CapturingLLM([LLMResponse(message=LLMMessage(role="assistant", content="done"))])
         await tool_exec(ctx, deps)
 
         seed_user = captured["messages"][1].content
@@ -644,13 +640,21 @@ class TestSynthesizeStage:
         assert len(result.trace) == 1
 
     @pytest.mark.asyncio
-    async def test_synthesize_handles_llm_failure(self, config: ResearchWorkflowConfig):
+    @pytest.mark.parametrize(
+        "lang,expected", [("zh", "报告生成失败"), ("en", "Report generation failed")]
+    )
+    async def test_synthesize_handles_llm_failure(
+        self,
+        config: ResearchWorkflowConfig,
+        lang: str,
+        expected: str,
+    ):
         class FailingLLM:
             async def chat(self, *a: Any, **kw: Any) -> LLMResponse:
                 raise RuntimeError("LLM down")
 
         ctx = ResearchContext(
-            request=ResearchRequest(question="test"),
+            request=ResearchRequest(question="test", lang=lang),
             evidence=[EvidenceItem(source="s", summary="e")],
         )
         _search = StubSearch()
@@ -663,7 +667,8 @@ class TestSynthesizeStage:
             config=config,
         )
         result = await synthesize(ctx, deps)
-        assert "failed" in result.report.lower() or "unavailable" in result.report.lower()
+        assert expected in result.report
+        assert result.failed_stages == ["synthesize"]
 
 
 class TestReviewStage:
@@ -680,16 +685,15 @@ class TestReviewStage:
 
     @pytest.mark.asyncio
     async def test_review_handles_bad_json(self, config: ResearchWorkflowConfig):
-        bad_review = LLMResponse(
-            message=LLMMessage(role="assistant", content="not json")
-        )
+        bad_review = LLMResponse(message=LLMMessage(role="assistant", content="not json"))
         ctx = ResearchContext(
             request=ResearchRequest(question="test"),
             report="some report",
         )
         deps = _make_deps(config, llm_responses=[bad_review])
         result = await review(ctx, deps)
-        assert result.review_passed is True
+        assert result.review_passed is False
+        assert "review" in result.failed_stages
 
 
 class TestPersistStage:
@@ -715,12 +719,8 @@ class TestSkillInstructionInjection:
     SKILL_MARKER = "SKILL-MARKER: focus on valuation discipline."
 
     @pytest.mark.asyncio
-    async def test_plan_prepends_instructions_when_present(
-        self, config: ResearchWorkflowConfig
-    ):
-        llm = _CapturingLLM(
-            [LLMResponse(message=LLMMessage(role="assistant", content=PLAN_JSON))]
-        )
+    async def test_plan_prepends_instructions_when_present(self, config: ResearchWorkflowConfig):
+        llm = _CapturingLLM([LLMResponse(message=LLMMessage(role="assistant", content=PLAN_JSON))])
         ctx = ResearchContext(
             request=ResearchRequest(question="Analyze AAPL"),
             skill_instructions=self.SKILL_MARKER,
@@ -734,12 +734,8 @@ class TestSkillInstructionInjection:
         assert "research planning assistant" in system_prompt
 
     @pytest.mark.asyncio
-    async def test_plan_prompt_untouched_without_skill(
-        self, config: ResearchWorkflowConfig
-    ):
-        llm = _CapturingLLM(
-            [LLMResponse(message=LLMMessage(role="assistant", content=PLAN_JSON))]
-        )
+    async def test_plan_prompt_untouched_without_skill(self, config: ResearchWorkflowConfig):
+        llm = _CapturingLLM([LLMResponse(message=LLMMessage(role="assistant", content=PLAN_JSON))])
         ctx = ResearchContext(request=ResearchRequest(question="Analyze AAPL"))
         assert ctx.skill_instructions == ""
         deps = _make_deps(config)
@@ -770,9 +766,7 @@ class TestSkillInstructionInjection:
         assert "financial research assistant with access to tools" in system_prompt
 
     @pytest.mark.asyncio
-    async def test_tool_exec_prompt_untouched_without_skill(
-        self, config: ResearchWorkflowConfig
-    ):
+    async def test_tool_exec_prompt_untouched_without_skill(self, config: ResearchWorkflowConfig):
         llm = _CapturingLLM(
             [LLMResponse(message=LLMMessage(role="assistant", content="No further tools needed."))]
         )
@@ -804,9 +798,7 @@ class TestSkillInstructionInjection:
         assert "senior financial research analyst" in system_prompt
 
     @pytest.mark.asyncio
-    async def test_synthesize_prompt_untouched_without_skill(
-        self, config: ResearchWorkflowConfig
-    ):
+    async def test_synthesize_prompt_untouched_without_skill(self, config: ResearchWorkflowConfig):
         llm = _CapturingLLM([SYNTHESIZE_RESPONSE])
         ctx = ResearchContext(
             request=ResearchRequest(question="Analyze AAPL"),
@@ -860,14 +852,10 @@ class TestResearchServiceSkillResolution:
             skill_dispatcher=dispatcher,
         )
 
-        await service.run(
-            ResearchRequest(question="Analyze AAPL", selected_skill="valuation")
-        )
+        await service.run(ResearchRequest(question="Analyze AAPL", selected_skill="valuation"))
         assert captured["ctx"].skill_instructions == "Valuation guidance body."
 
-        await service.run(
-            ResearchRequest(question="Analyze AAPL", selected_skill="research")
-        )
+        await service.run(ResearchRequest(question="Analyze AAPL", selected_skill="research"))
         assert captured["ctx"].skill_instructions == ""
 
         await service.run(
@@ -967,17 +955,13 @@ class TestToolRegistry:
 class TestExecuteWorkflow:
     @pytest.mark.asyncio
     async def test_full_workflow_e2e(self, config: ResearchWorkflowConfig):
-        plan_response = LLMResponse(
-            message=LLMMessage(role="assistant", content=PLAN_JSON)
-        )
+        plan_response = LLMResponse(message=LLMMessage(role="assistant", content=PLAN_JSON))
         tool_exec_done = LLMResponse(
             message=LLMMessage(role="assistant", content="Sufficient evidence gathered.")
         )
         llm_responses = [plan_response, tool_exec_done, SYNTHESIZE_RESPONSE, REVIEW_RESPONSE]
         deps = _make_deps(config, llm_responses=llm_responses)
-        ctx = ResearchContext(
-            request=ResearchRequest(question="Analyze AAPL", ticker="AAPL")
-        )
+        ctx = ResearchContext(request=ResearchRequest(question="Analyze AAPL", ticker="AAPL"))
         result = await execute_workflow(ctx, deps)
         assert result.run_id != ""
         assert len(result.evidence) > 0
@@ -990,32 +974,22 @@ class TestExecuteWorkflow:
     @pytest.mark.asyncio
     async def test_workflow_without_review(self):
         config = ResearchWorkflowConfig(enable_review=False, max_tool_calls=3)
-        plan_response = LLMResponse(
-            message=LLMMessage(role="assistant", content=PLAN_JSON)
-        )
+        plan_response = LLMResponse(message=LLMMessage(role="assistant", content=PLAN_JSON))
         tool_exec_done = LLMResponse(
             message=LLMMessage(role="assistant", content="Sufficient evidence gathered.")
         )
         llm_responses = [plan_response, tool_exec_done, SYNTHESIZE_RESPONSE]
         deps = _make_deps(config, llm_responses=llm_responses)
-        ctx = ResearchContext(
-            request=ResearchRequest(question="Analyze AAPL", ticker="AAPL")
-        )
+        ctx = ResearchContext(request=ResearchRequest(question="Analyze AAPL", ticker="AAPL"))
         result = await execute_workflow(ctx, deps)
         stage_names = [t.stage for t in result.trace]
         assert "review" not in stage_names
 
     @pytest.mark.asyncio
-    async def test_execute_workflow_runs_subset_of_stages(
-        self, config: ResearchWorkflowConfig
-    ):
-        plan_response = LLMResponse(
-            message=LLMMessage(role="assistant", content=PLAN_JSON)
-        )
+    async def test_execute_workflow_runs_subset_of_stages(self, config: ResearchWorkflowConfig):
+        plan_response = LLMResponse(message=LLMMessage(role="assistant", content=PLAN_JSON))
         deps = _make_deps(config, llm_responses=[plan_response])
-        ctx = ResearchContext(
-            request=ResearchRequest(question="Analyze AAPL", ticker="AAPL")
-        )
+        ctx = ResearchContext(request=ResearchRequest(question="Analyze AAPL", ticker="AAPL"))
         result = await execute_workflow(ctx, deps, stages=["intake", "plan"])
         stage_names = {t.stage for t in result.trace}
         assert stage_names == {"intake", "plan"}
@@ -1030,17 +1004,13 @@ class TestExecuteWorkflow:
     async def test_execute_workflow_stages_none_runs_full_plan(
         self, config: ResearchWorkflowConfig
     ):
-        plan_response = LLMResponse(
-            message=LLMMessage(role="assistant", content=PLAN_JSON)
-        )
+        plan_response = LLMResponse(message=LLMMessage(role="assistant", content=PLAN_JSON))
         tool_exec_done = LLMResponse(
             message=LLMMessage(role="assistant", content="Sufficient evidence gathered.")
         )
         llm_responses = [plan_response, tool_exec_done, SYNTHESIZE_RESPONSE, REVIEW_RESPONSE]
         deps = _make_deps(config, llm_responses=llm_responses)
-        ctx = ResearchContext(
-            request=ResearchRequest(question="Analyze AAPL", ticker="AAPL")
-        )
+        ctx = ResearchContext(request=ResearchRequest(question="Analyze AAPL", ticker="AAPL"))
         result = await execute_workflow(ctx, deps)
         stages_seen: list[str] = []
         for t in result.trace:
@@ -1063,14 +1033,16 @@ class TestRegisterStage:
         plan_resp = LLMResponse(
             message=LLMMessage(
                 role="assistant",
-                content=json.dumps({
-                    "search_queries": [],
-                    "market_data": [],
-                    "financials": [],
-                    "fetch_company_info_tickers": [],
-                    "fetch_analyst_data_tickers": [],
-                    "fetch_crypto_tickers": [],
-                }),
+                content=json.dumps(
+                    {
+                        "search_queries": [],
+                        "market_data": [],
+                        "financials": [],
+                        "fetch_company_info_tickers": [],
+                        "fetch_analyst_data_tickers": [],
+                        "fetch_crypto_tickers": [],
+                    }
+                ),
             )
         )
         tool_done = LLMResponse(
