@@ -127,6 +127,47 @@ class TestGetMarketDataRouting:
 
     @patch("fin_agent.adapters.market_data.router.YFinanceClient")
     @patch("fin_agent.adapters.market_data.router.AKShareClient")
+    def test_a_share_yahoo_fallback_adds_exchange_suffix(self, MockAK, MockYF):
+        ak_instance = MagicMock()
+        yf_instance = MagicMock()
+        MockAK.return_value = ak_instance
+        MockYF.return_value = yf_instance
+        ak_instance.get_market_data.return_value = _empty_market_resp("002594")
+        yf_instance.get_market_data.return_value = _market_resp("002594.SZ", "yf")
+
+        router = MarketDataRouter()
+        resp = router.get_market_data("002594", AssetType.STOCK)
+
+        assert len(resp.data) == 1
+        yf_instance.get_market_data.assert_called_once_with(
+            "002594.SZ",
+            AssetType.STOCK,
+            frequency=DataFrequency.DAILY,
+            period=None,
+        )
+
+    @patch("fin_agent.adapters.market_data.router.YFinanceClient")
+    @patch("fin_agent.adapters.market_data.router.AKShareClient")
+    def test_a_share_index_yahoo_fallback_uses_shanghai_suffix(self, MockAK, MockYF):
+        ak_instance = MagicMock()
+        yf_instance = MagicMock()
+        MockAK.return_value = ak_instance
+        MockYF.return_value = yf_instance
+        ak_instance.get_market_data.return_value = _empty_market_resp("000300")
+        yf_instance.get_market_data.return_value = _market_resp("000300.SS", "yf")
+
+        router = MarketDataRouter()
+        router.get_market_data("000300", AssetType.STOCK)
+
+        yf_instance.get_market_data.assert_called_once_with(
+            "000300.SS",
+            AssetType.STOCK,
+            frequency=DataFrequency.DAILY,
+            period=None,
+        )
+
+    @patch("fin_agent.adapters.market_data.router.YFinanceClient")
+    @patch("fin_agent.adapters.market_data.router.AKShareClient")
     def test_non_a_share_does_not_fall_back_to_akshare(self, MockAK, MockYF):
         ak_instance = MagicMock()
         yf_instance = MagicMock()

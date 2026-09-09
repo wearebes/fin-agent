@@ -22,6 +22,7 @@ from fin_agent.domain.types import (
 logger = logging.getLogger(__name__)
 
 _A_SHARE_RE = re.compile(r"^(sh|sz|bj)?\d{6}$", re.IGNORECASE)
+_SHANGHAI_INDEX_CODES = frozenset({"000001", "000016", "000300", "000852", "000905"})
 
 
 def _is_a_share_ticker(ticker: str) -> bool:
@@ -31,6 +32,25 @@ def _is_a_share_ticker(ticker: str) -> bool:
     （中国市场数据源），避免非 A 股 ticker 触发无效的中国接口调用。
     """
     return bool(ticker) and bool(_A_SHARE_RE.match(ticker.strip()))
+
+
+def _yahoo_a_share_ticker(ticker: str) -> str:
+    """Translate the app's six-digit A-share input into Yahoo's suffix format.
+
+    The UI deliberately accepts familiar six-digit mainland symbols such as
+    ``002594`` and ``000300``. Yahoo needs the exchange suffix only for the
+    fallback request; users never need to type it.
+    """
+    value = ticker.strip().lower()
+    prefix = value[:2] if value[:2] in {"sh", "sz", "bj"} else ""
+    code = value.removeprefix(prefix)
+    if prefix == "sh" or code.startswith(("6", "9")) or code in _SHANGHAI_INDEX_CODES:
+        suffix = ".SS"
+    elif prefix == "bj" or code.startswith(("4", "8")):
+        suffix = ".BJ"
+    else:
+        suffix = ".SZ"
+    return f"{code}{suffix}"
 
 
 def _first_non_none[T](*values: T | None) -> T | None:
@@ -154,6 +174,16 @@ class MarketDataRouter:
         )
         if is_a_share:
             resp = self._ak.get_market_data(ticker, asset_type, frequency=frequency, period=period)
+            if resp.data:
+                return resp
+            # Yahoo is a reliable fallback for many A-share symbols, but it
+            # requires an exchange suffix that is intentionally hidden from users.
+            resp = self._yf.get_market_data(
+                _yahoo_a_share_ticker(ticker),
+                asset_type,
+                frequency=frequency,
+                period=period,
+            )
             if resp.data:
                 return resp
         if self._fmp._api_key:
