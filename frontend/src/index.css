@@ -2055,6 +2055,13 @@ button {
 .qf-fields input, .qf-fields select, .qf-window-grid input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--qf-line); border-radius: 9px; outline: none; color: #eef3ed; background: rgba(0,0,0,.24); font: 600 .78rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; transition: .15s ease; }
 .qf-fields input:focus, .qf-fields select:focus, .qf-window-grid input:focus { border-color: rgba(90,200,250,.55); box-shadow: 0 0 0 3px rgba(90,200,250,.06); }
 .qf-fields select option { background: #12171a; }
+.qf-help-trigger { display: inline-grid; place-items: center; width: 17px; height: 17px; margin-left: 5px; padding: 0; vertical-align: -3px; color: #8fa0ab; background: transparent; border: 0; cursor: pointer; }
+.qf-help-trigger:hover, .qf-help-trigger[aria-expanded="true"] { color: var(--qf-accent); }
+.qf-code-help { margin-top: 10px; padding: 12px 13px; color: #aab5bb; background: rgba(90,200,250,.055); border: 1px solid rgba(90,200,250,.16); border-radius: 10px; font-size: .71rem; line-height: 1.55; }
+.qf-code-help header { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #e1edf0; }
+.qf-code-help header button { padding: 0; color: #8fa0ab; background: transparent; border: 0; cursor: pointer; font-size: .68rem; }
+.qf-code-help header button:hover { color: var(--qf-accent); }
+.qf-code-help p { margin: 7px 0 0; }
 .qf-unit-input { position: relative; }
 .qf-unit-input input { padding-right: 48px; }
 .qf-unit-input em { position: absolute; right: 12px; top: 14px; color: #5b676f; font: normal 700 .66rem/1 ui-monospace, monospace; }

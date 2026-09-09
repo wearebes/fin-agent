@@ -6,6 +6,7 @@ import {
   BarChart3,
   CheckCircle2,
   CircleX,
+  CircleHelp,
   FlaskConical,
   Gauge,
   Play,
@@ -47,6 +48,12 @@ const copy = {
       momentum: '阈值为区间动量（%）：高于入场值持有，低于离场值空仓。',
       bollinger: '阈值为标准差倍数：跌破入场倍数买入，回到离场倍数卖出。',
     },
+    codeHelp: {
+      trigger: '查看代码格式说明', close: '收起说明', title: '代码怎么填？',
+      aShare: 'A 股直接填 6 位数字：比亚迪填 002594；沪深 300 基准填 000300。不要加 .SZ 或 .SS。',
+      overseas: '港股：1211.HK（比亚迪股份）；美股：AAPL；美股 ETF：SPY；加密货币：BTC-USD。',
+      note: '标的与基准建议选同一市场，例如 002594 对 000300，或 AAPL 对 SPY。',
+    },
   },
   en: {
     eyebrow: 'Quant Forensics',
@@ -70,6 +77,12 @@ const copy = {
       rsi: 'Thresholds are RSI: enter below entry and exit above the exit value.',
       momentum: 'Thresholds are lookback momentum (%): hold above entry and exit below the exit value.',
       bollinger: 'Thresholds are standard deviations: enter below the lower band and exit at the exit band.',
+    },
+    codeHelp: {
+      trigger: 'Show ticker format guidance', close: 'Hide guidance', title: 'Ticker format',
+      aShare: 'A-shares use six digits: BYD is 002594 and CSI 300 is 000300. Do not add .SZ or .SS.',
+      overseas: 'Hong Kong: 1211.HK (BYD); US: AAPL; US ETF: SPY; crypto: BTC-USD.',
+      note: 'Use a benchmark from the same market, such as 002594 vs 000300 or AAPL vs SPY.',
     },
   },
 }
@@ -170,6 +183,7 @@ export default function QuantWorkbench() {
   const lang = useWorkspace((state) => state.lang)
   const labels = copy[lang]
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('setup')
+  const [showCodeHelp, setShowCodeHelp] = useState(false)
   const [form, setForm] = useState<ForensicsInput>({
     ticker: 'SPY', benchmark: 'SPY', period: '5y', strategy: 'ma_cross',
     fast_window: 20, slow_window: 60, custom_signal: 'ma_cross', entry_threshold: 0.2,
@@ -235,9 +249,10 @@ export default function QuantWorkbench() {
             <p className="qf-custom-hint">{labels.customHint[form.custom_signal]}</p>
           </>}
           <div className="qf-fields qf-fields-2">
-            <label><span>{labels.ticker}</span><input value={form.ticker} onChange={(event) => update('ticker', event.target.value)} placeholder="SPY / AAPL / 510300" required /></label>
+            <label><span>{labels.ticker}<button className="qf-help-trigger" type="button" aria-label={labels.codeHelp.trigger} aria-expanded={showCodeHelp} onClick={() => setShowCodeHelp((visible) => !visible)}><CircleHelp size={14} /></button></span><input value={form.ticker} onChange={(event) => update('ticker', event.target.value)} placeholder="002594 / AAPL / 1211.HK" required /></label>
             <label><span>{labels.benchmark}</span><input value={form.benchmark} onChange={(event) => update('benchmark', event.target.value)} placeholder="SPY" required /></label>
           </div>
+          {showCodeHelp && <aside className="qf-code-help" role="note"><header><strong>{labels.codeHelp.title}</strong><button type="button" onClick={() => setShowCodeHelp(false)}>{labels.codeHelp.close}</button></header><p>{labels.codeHelp.aShare}</p><p>{labels.codeHelp.overseas}</p><p>{labels.codeHelp.note}</p></aside>}
           <div className="qf-fields qf-fields-2">
             <label><span>{labels.period}</span><select value={form.period} onChange={(event) => update('period', event.target.value as ForensicsInput['period'])}><option value="1y">1 year</option><option value="2y">2 years</option><option value="5y">5 years</option><option value="10y">10 years</option></select></label>
             <label><span>{labels.cost}</span><div className="qf-unit-input"><input type="number" min="0" max="100" value={form.transaction_cost_bps} onChange={(event) => update('transaction_cost_bps', Number(event.target.value))} /><em>bps</em></div></label>
