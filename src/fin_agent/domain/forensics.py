@@ -31,6 +31,30 @@ class AuditStatus(StrEnum):
     FAIL = "fail"
 
 
+_SYMBOL_ALIASES = {
+    "NDX": "^NDX",
+    "NDX100": "^NDX",
+    "NASDAQ100": "^NDX",
+    "NASDAQ-100": "^NDX",
+    "NASDAQ 100": "^NDX",
+    "纳斯达克100": "^NDX",
+    "纳指100": "^NDX",
+    "沪深300": "000300",
+    "上证指数": "000001",
+    "标普500": "^GSPC",
+    "S&P500": "^GSPC",
+    "SP500": "^GSPC",
+    "恒生指数": "^HSI",
+    "HSI": "^HSI",
+}
+
+
+def _normalize_symbol(value: object) -> str:
+    """Accept a short list of familiar index names alongside provider tickers."""
+    symbol = str(value).strip().upper()
+    return _SYMBOL_ALIASES.get(symbol, symbol)
+
+
 class ForensicsRequest(BaseModel):
     ticker: str = Field(default="SPY", min_length=1, max_length=24)
     benchmark: str | None = Field(default=None, min_length=1, max_length=24)
@@ -45,12 +69,17 @@ class ForensicsRequest(BaseModel):
     transaction_cost_bps: float = Field(default=8.0, ge=0, le=100)
     lang: str = Field(default="zh", pattern=r"^(zh|en)$")
 
+    @field_validator("ticker", mode="before")
+    @classmethod
+    def normalize_ticker(cls, value: object) -> str:
+        return _normalize_symbol(value)
+
     @field_validator("benchmark", mode="before")
     @classmethod
     def normalize_optional_benchmark(cls, value: object) -> object:
         if value is None:
             return None
-        normalized = str(value).strip()
+        normalized = _normalize_symbol(value)
         return normalized or None
 
     @model_validator(mode="after")

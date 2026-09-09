@@ -2062,6 +2062,10 @@ button {
 .qf-code-help header button { padding: 0; color: #8fa0ab; background: transparent; border: 0; cursor: pointer; font-size: .68rem; }
 .qf-code-help header button:hover { color: var(--qf-accent); }
 .qf-code-help p { margin: 7px 0 0; }
+.qf-symbol-examples { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.qf-symbol-examples button { display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 5px 8px; color: #c9d5d8; background: rgba(255,255,255,.035); border: 1px solid rgba(90,200,250,.18); border-radius: 7px; font-size: .66rem; cursor: pointer; }
+.qf-symbol-examples button:hover { color: #eef8f7; border-color: rgba(90,200,250,.52); background: rgba(90,200,250,.1); }
+.qf-symbol-examples b { color: var(--qf-accent); font: 700 .66rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .qf-unit-input { position: relative; }
 .qf-unit-input input { padding-right: 48px; }
 .qf-unit-input em { position: absolute; right: 12px; top: 14px; color: #5b676f; font: normal 700 .66rem/1 ui-monospace, monospace; }

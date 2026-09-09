@@ -48,11 +48,15 @@ const copy = {
       momentum: '阈值为区间动量（%）：高于入场值持有，低于离场值空仓。',
       bollinger: '阈值为标准差倍数：跌破入场倍数买入，回到离场倍数卖出。',
     },
-    codeHelp: {
-      trigger: '查看代码格式说明', close: '收起说明', title: '代码怎么填？',
-      aShare: 'A 股直接填 6 位数字：比亚迪填 002594；沪深 300 基准填 000300。不要加 .SZ 或 .SS。',
-      overseas: '港股：1211.HK（比亚迪股份）；美股：AAPL；美股 ETF：SPY；加密货币：BTC-USD。',
-      note: '基准可留空：将只评估策略自身的收益、回撤、成本和稳健性。需比较广义 A 股表现时可填沪深300 000300。',
+    tickerHelp: {
+      trigger: '查看标的代码说明', close: '收起说明', title: '标的怎么填？',
+      note: '可直接填常用简称，系统会自动转换为行情代码；不需要记忆 ^ 等特殊符号。',
+      examples: [['比亚迪', '002594'], ['纳斯达克 100', 'NDX100'], ['纳指 100 ETF', 'QQQ'], ['苹果', 'AAPL']],
+    },
+    benchmarkHelp: {
+      trigger: '查看基准说明', close: '收起说明', title: '基准怎么选？',
+      note: '可留空：只评估策略自身表现。需要比较相对收益时，选择与标的市场相近的宽基。',
+      examples: [['沪深 300', '000300'], ['标普 500', 'SPY'], ['纳斯达克 100', 'NDX100'], ['恒生指数', '^HSI']],
     },
   },
   en: {
@@ -78,11 +82,15 @@ const copy = {
       momentum: 'Thresholds are lookback momentum (%): hold above entry and exit below the exit value.',
       bollinger: 'Thresholds are standard deviations: enter below the lower band and exit at the exit band.',
     },
-    codeHelp: {
-      trigger: 'Show ticker format guidance', close: 'Hide guidance', title: 'Ticker format',
-      aShare: 'A-shares use six digits: BYD is 002594 and CSI 300 is 000300. Do not add .SZ or .SS.',
-      overseas: 'Hong Kong: 1211.HK (BYD); US: AAPL; US ETF: SPY; crypto: BTC-USD.',
-      note: 'Leave blank to evaluate strategy return, drawdown, costs and robustness. For broad A-share comparison, use CSI 300 (000300).',
+    tickerHelp: {
+      trigger: 'Show ticker guidance', close: 'Hide guidance', title: 'How do I enter a ticker?',
+      note: 'Common names are accepted and converted to market symbols automatically.',
+      examples: [['BYD', '002594'], ['Nasdaq 100', 'NDX100'], ['Nasdaq 100 ETF', 'QQQ'], ['Apple', 'AAPL']],
+    },
+    benchmarkHelp: {
+      trigger: 'Show benchmark guidance', close: 'Hide guidance', title: 'How do I choose a benchmark?',
+      note: 'Leave blank for absolute performance; otherwise choose a broad index from the same market.',
+      examples: [['CSI 300', '000300'], ['S&P 500', 'SPY'], ['Nasdaq 100', 'NDX100'], ['Hang Seng', '^HSI']],
     },
   },
 }
@@ -189,7 +197,7 @@ export default function QuantWorkbench() {
   const lang = useWorkspace((state) => state.lang)
   const labels = copy[lang]
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('setup')
-  const [showCodeHelp, setShowCodeHelp] = useState(false)
+  const [help, setHelp] = useState<'ticker' | 'benchmark' | null>(null)
   const [form, setForm] = useState<ForensicsInput>({
     ticker: 'SPY', benchmark: '', period: '5y', strategy: 'ma_cross',
     fast_window: 20, slow_window: 60, custom_signal: 'ma_cross', entry_threshold: 0.2,
@@ -201,6 +209,9 @@ export default function QuantWorkbench() {
   })
   const update = <K extends keyof ForensicsInput>(key: K, value: ForensicsInput[K]) => {
     setForm((current) => ({ ...current, [key]: value }))
+  }
+  const toggleHelp = (target: 'ticker' | 'benchmark') => {
+    setHelp((current) => current === target ? null : target)
   }
   const selectTemplate = (kind: StrategyKind) => {
     const template = templates.find((item) => item.kind === kind)!
@@ -255,10 +266,10 @@ export default function QuantWorkbench() {
             <p className="qf-custom-hint">{labels.customHint[form.custom_signal]}</p>
           </>}
           <div className="qf-fields qf-fields-2">
-            <label><span>{labels.ticker}<button className="qf-help-trigger" type="button" aria-label={labels.codeHelp.trigger} aria-expanded={showCodeHelp} onClick={() => setShowCodeHelp((visible) => !visible)}><CircleHelp size={14} /></button></span><input value={form.ticker} onChange={(event) => update('ticker', event.target.value)} placeholder="002594 / AAPL / 1211.HK" required /></label>
-            <label><span>{labels.benchmark}</span><input value={form.benchmark} onChange={(event) => update('benchmark', event.target.value)} placeholder={lang === 'zh' ? '可留空；大盘比较可填 000300' : 'Optional; use 000300 for broad A-shares'} /></label>
+            <label><span>{labels.ticker}<button className="qf-help-trigger" type="button" aria-label={labels.tickerHelp.trigger} aria-expanded={help === 'ticker'} onClick={() => toggleHelp('ticker')}><CircleHelp size={14} /></button></span><input value={form.ticker} onChange={(event) => update('ticker', event.target.value)} placeholder="002594 / NDX100 / AAPL" required /></label>
+            <label><span>{labels.benchmark}<button className="qf-help-trigger" type="button" aria-label={labels.benchmarkHelp.trigger} aria-expanded={help === 'benchmark'} onClick={() => toggleHelp('benchmark')}><CircleHelp size={14} /></button></span><input value={form.benchmark} onChange={(event) => update('benchmark', event.target.value)} placeholder={lang === 'zh' ? '可留空；需要比较时再填写' : 'Optional; add only for comparison'} /></label>
           </div>
-          {showCodeHelp && <aside className="qf-code-help" role="note"><header><strong>{labels.codeHelp.title}</strong><button type="button" onClick={() => setShowCodeHelp(false)}>{labels.codeHelp.close}</button></header><p>{labels.codeHelp.aShare}</p><p>{labels.codeHelp.overseas}</p><p>{labels.codeHelp.note}</p></aside>}
+          {help && <aside className="qf-code-help" role="note"><header><strong>{labels[`${help}Help`].title}</strong><button type="button" onClick={() => setHelp(null)}>{labels[`${help}Help`].close}</button></header><p>{labels[`${help}Help`].note}</p><div className="qf-symbol-examples">{labels[`${help}Help`].examples.map(([name, symbol]) => <button type="button" key={symbol} onClick={() => { update(help, symbol); setHelp(null) }}><span>{name}</span><b>{symbol}</b></button>)}</div></aside>}
           <div className="qf-fields qf-fields-2">
             <label><span>{labels.period}</span><select value={form.period} onChange={(event) => update('period', event.target.value as ForensicsInput['period'])}><option value="1y">1 year</option><option value="2y">2 years</option><option value="5y">5 years</option><option value="10y">10 years</option></select></label>
             <label><span>{labels.cost}</span><div className="qf-unit-input"><input type="number" min="0" max="100" value={form.transaction_cost_bps} onChange={(event) => update('transaction_cost_bps', Number(event.target.value))} /><em>bps</em></div></label>

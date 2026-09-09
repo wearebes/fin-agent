@@ -171,6 +171,13 @@ async def test_forensics_without_benchmark_keeps_absolute_strategy_evaluation() 
     assert all(point.benchmark is None for point in report.equity_curve)
 
 
+def test_forensics_normalizes_common_index_aliases() -> None:
+    request = ForensicsRequest(ticker="NDX100", benchmark="沪深300")
+
+    assert request.ticker == "^NDX"
+    assert request.benchmark == "000300"
+
+
 @pytest.mark.asyncio
 async def test_short_history_is_rejected() -> None:
     service = ForensicsService(ShortMarketData())
