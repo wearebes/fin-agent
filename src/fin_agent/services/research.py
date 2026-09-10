@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from fin_agent.domain.constants import EnvironmentName, RunStatus
 from fin_agent.domain.types import ResearchRequest, RetrievalPlan, RunResult, TraceRecord
+from fin_agent.services.report_data import build_report_data
 from fin_agent.services.skill_router import SkillDispatcher
 from fin_agent.storage.run_store import RunStore
 from fin_agent.workflows.research.config import ResearchWorkflowConfig
@@ -77,6 +78,14 @@ class ResearchService:
             self._skill_dispatcher,
         )
 
+    def with_owner(self, owner: str | None) -> ResearchService:
+        providers = {**self._providers}
+        if owner:
+            providers["owner_user_id"] = owner
+        return ResearchService(
+            self._environment, providers, self._run_store, self._deps, self._skill_dispatcher,
+        )
+
     async def run(
         self,
         request: ResearchRequest,
@@ -119,6 +128,8 @@ class ResearchService:
             report=ctx.report,
             evidence=ctx.evidence[: self.workflow_config.evidence_limit],
             trace=ctx.trace,
+            report_data=(build_report_data(ctx)
+                         if request.template == "illustrated_research" else None),
         )
         self._run_store.save(run)
         return run

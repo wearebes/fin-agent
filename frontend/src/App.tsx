@@ -11,6 +11,9 @@ import PasswordPage from './components/user/PasswordPage'
 import SkillsPage from './components/user/SkillsPage'
 import LocalSetupPage from './components/LocalSetupPage'
 import LocalWorkspaceSync from './components/LocalWorkspaceSync'
+import ResearchTasks from './components/ResearchTasks'
+import ResearchJobSync from './components/ResearchJobSync'
+import './research-tasks.css'
 import { getLocalSetupStatus, type LocalSetupStatus } from './api/local'
 import ModelSettingsPage from './components/user/ModelSettingsPage'
 import { useWorkspace } from './store/workspace'
@@ -39,10 +42,13 @@ export default function App() {
   return (
     <div className={`app ${isQuant ? 'theme-dark' : 'theme-light'}`}>
       <LocalWorkspaceSync />
+      <ResearchJobSync />
       <TopBar isQuant={isQuant} isUser={isUser} />
       <Routes>
         <Route path="/" element={<Navigate to="/chat" replace />} />
         <Route path="/chat" element={<ChatWorkspace />} />
+        <Route path="/research/tasks" element={<ResearchTasks />} />
+        <Route path="/research/tasks/:jobId" element={<ResearchTasks />} />
         <Route path="/p/:projectId/s/:sessionId" element={<ChatWorkspace />} />
         <Route path="/quant" element={<QuantView />} />
         <Route path="/user" element={<UserLayout />}>

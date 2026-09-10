@@ -1,4 +1,5 @@
 import { RotateCcw } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { translate } from '../i18n'
 import type { Lang, ResearchMode, ResearchTurn } from '../types'
 import type { Message } from '../store/workspace'
@@ -49,8 +50,10 @@ export default function MessageBubble({
   return (
     <div className="msg assistant">
       <div className="bubble assistant-bubble">
+        {message.jobId && <Link className="research-job-link" to={`/research/tasks/${message.jobId}`}>
+          {lang === 'zh' ? '查看后台研究任务与图文研报 →' : 'Open background task and illustrated report →'}</Link>}
         {message.status === 'running' && (
-          <ResearchProgress progress={message.progress} startedAt={message.createdAt} lang={lang} />
+          <ResearchProgress progress={message.progress} startedAt={message.createdAt} lang={lang} background={!!message.jobClientId} />
         )}
 
         {failed && (

@@ -68,3 +68,9 @@ class TraceRecordRow(Base):
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
 
     run: Mapped[RunRow] = relationship("RunRow", back_populates="trace_records")
+
+
+class ReportDataRow(Base):
+    __tablename__ = "research_report_data"
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    payload: Mapped[str] = mapped_column(Text)

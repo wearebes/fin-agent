@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from fin_agent.domain.reports import ReportData
 from fin_agent.domain.types import (
     EvidenceItem,
     ResearchRequest,
@@ -16,7 +17,7 @@ from fin_agent.domain.types import (
     RunResult,
     TraceRecord,
 )
-from fin_agent.storage.models import Base, RunRow, TraceRecordRow
+from fin_agent.storage.models import Base, ReportDataRow, RunRow, TraceRecordRow
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,9 @@ class SQLAlchemyRunStore:
                 session.delete(existing)
                 session.flush()
             session.add(_result_to_row(run))
+            if run.report_data is not None:
+                session.merge(ReportDataRow(run_id=run.run_id,
+                                           payload=run.report_data.model_dump_json()))
             session.commit()
 
     def get(self, run_id: str) -> RunResult | None:
@@ -75,7 +79,11 @@ class SQLAlchemyRunStore:
             row = session.get(RunRow, run_id)
             if row is None:
                 return None
-            return _row_to_result(row)
+            result = _row_to_result(row)
+            figures = session.get(ReportDataRow, run_id)
+            if figures is not None:
+                result.report_data = ReportData.model_validate_json(figures.payload)
+            return result
 
     def get_trace(self, run_id: str) -> list[TraceRecord] | None:
         with Session(self._engine) as session:

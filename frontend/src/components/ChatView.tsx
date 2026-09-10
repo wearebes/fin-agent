@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Eraser, PanelLeftClose, PanelLeftOpen, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { postResearchRun } from '../api/research'
+import { submitJob } from '../api/jobs'
 import { getModelAccess } from '../api/models'
 import type { ModelAccess } from '../api/models'
 import { translate } from '../i18n'
@@ -107,6 +108,13 @@ export default function ChatView({ sidebarOpen, onToggleSidebar }: {
       const auth = useUserStore.getState()
       if (auth.modelSource !== 'default' && !auth.token) throw new Error('请登录后使用所选模型。 / Sign in first.')
       if (auth.modelSource === 'codex' && !modelAccess.local_codex) throw new Error('本机 Codex 不对当前账户开放。 / Local Codex is unavailable for this account.')
+      if (effectiveMode === 'auto') {
+        updateMessage(assistantId, { jobClientId: assistantId })
+        const job = await submitJob({ question, ticker, lang, selected_skill: selectedSkill,
+          mode: 'auto', template: 'illustrated_research', history: inputHistory }, auth.modelSource, assistantId)
+        updateMessage(assistantId, { jobId: job.id, progress: { stage: job.stage, status: 'running' } })
+        return
+      }
       const result = await postResearchRun(
         {
           question, ticker, lang, selectedSkill, mode: effectiveMode, history: inputHistory,
@@ -120,6 +128,10 @@ export default function ChatView({ sidebarOpen, onToggleSidebar }: {
         durationMs: Date.now() - startedAt,
       })
     } catch (error) {
+      if (effectiveMode === 'auto' && error instanceof TypeError) {
+        updateMessage(assistantId, { error: '连接中断，正在核对后台任务；可到研究任务中心查看。 / Reconnecting to the background task.' })
+        return
+      }
       updateMessage(assistantId, {
         status: 'failed',
         error: error instanceof Error ? error.message : String(error),
@@ -149,6 +161,7 @@ export default function ChatView({ sidebarOpen, onToggleSidebar }: {
           <span>{t('projectHistory')}</span>
         </button>
         <span className="chat-title">{chatTitle}</span>
+        <Link className="ghost-btn" to="/research/tasks">{lang === 'zh' ? '研究任务' : 'Research tasks'}</Link>
         {messages.length > 0 && (
           <button className="ghost-btn" onClick={onClear} disabled={running}>
             <Eraser size={14} />
@@ -191,6 +204,9 @@ export default function ChatView({ sidebarOpen, onToggleSidebar }: {
         draft={draft} onChange={updateDraft} hasHistory={history.length > 0}
         useHistory={useHistory} onHistoryChange={setUseHistory}
         allowPlanMode={modelSource === 'default'} />
+      <p className="research-background-hint">{planMode && modelSource === 'default'
+        ? (lang === 'zh' ? '计划模式需在页面内确认；关闭计划模式后，可提交后台研究。' : 'Plan mode requires page approval. Turn it off for background research.')
+        : (lang === 'zh' ? '提交后在后台执行，进度和图文研报可在「研究任务」查看。' : 'Research runs in the background. Find progress and reports in Research tasks.')}</p>
     </section>
   )
 }

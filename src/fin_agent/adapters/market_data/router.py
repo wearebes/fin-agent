@@ -175,6 +175,7 @@ class MarketDataRouter:
         if is_a_share:
             resp = self._ak.get_market_data(ticker, asset_type, frequency=frequency, period=period)
             if resp.data:
+                resp.source = "AKShare"
                 return resp
             # Yahoo is a reliable fallback for many A-share symbols, but it
             # requires an exchange suffix that is intentionally hidden from users.
@@ -189,6 +190,7 @@ class MarketDataRouter:
         if self._fmp._api_key:
             resp = self._fmp.get_market_data(ticker, asset_type, frequency=frequency, period=period)
             if resp.data:
+                resp.source = "Financial Modeling Prep"
                 return resp
         resp = self._yf.get_market_data(ticker, asset_type, frequency=frequency, period=period)
         if resp.data:
@@ -204,16 +206,22 @@ class MarketDataRouter:
     ) -> FinancialStatementResponse:
         resp_a = self._yf.get_financials(ticker, statement_type, frequency=frequency)
         merged_data = resp_a.data
+        sources = ["Yahoo Finance"] if merged_data else []
         if _is_a_share_ticker(ticker):
             resp_b = self._ak.get_financials(ticker, statement_type, frequency=frequency)
+            if resp_b.data:
+                sources.append("AKShare")
             merged_data = _merge_records_by_year(merged_data, resp_b.data)
         if self._fmp._api_key:
             resp_c = self._fmp.get_financials(ticker, statement_type, frequency=frequency)
+            if resp_c.data:
+                sources.append("Financial Modeling Prep")
             merged_data = _merge_records_by_year(merged_data, resp_c.data)
         return FinancialStatementResponse(
             ticker=ticker,
             statement_type=statement_type,
             data=merged_data,
+            source=" / ".join(sources) or None,
         )
 
     def get_analyst_data(self, ticker: str) -> AnalystResponse:

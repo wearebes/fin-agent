@@ -137,7 +137,8 @@ class YFinanceClient:
                     )
                 )
             return MarketDataResponse(
-                ticker=ticker, asset_type=asset_type, frequency=frequency, data=points
+                ticker=ticker, asset_type=asset_type, frequency=frequency, data=points,
+                source="Yahoo Finance (yfinance)", price_basis="yfinance history auto-adjusted",
             )
         except Exception:
             logger.warning(
@@ -211,6 +212,8 @@ class YFinanceClient:
                 asset_type=asset_type,
                 frequency=frequency,
                 data=points,
+                source="Yahoo Finance chart API", currency=result.get("meta", {}).get("currency"),
+                price_basis="Yahoo chart quote.close (not a total-return series)",
             )
         except Exception:
             logger.exception("Yahoo chart fallback failed for ticker=%s", ticker)

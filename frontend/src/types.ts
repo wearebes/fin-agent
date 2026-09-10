@@ -85,4 +85,37 @@ export interface RunResult {
   report: string
   evidence: EvidenceItem[]
   trace: TraceRecord[]
+  report_data?: ReportData | null
+}
+
+export interface ReportChart {
+  title: string
+  kind: 'line' | 'bar'
+  unit: string
+  labels: string[]
+  series: { name: string; values: (number | null)[] }[]
+  source: string
+  note: string
+}
+
+export interface ReportData {
+  captured_at: string
+  narrative: 'ai' | 'data_only'
+  metrics: { label: string; value: number; unit: string; context: string }[]
+  charts: ReportChart[]
+  gaps: string[]
+  summary: string[]
+}
+
+export interface ResearchJob {
+  id: string
+  client_id: string
+  request: ResearchRequest
+  source: 'default' | 'personal' | 'codex'
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'interrupted'
+  stage: string
+  created_at: string
+  updated_at: string
+  error: string | null
+  result?: RunResult | null
 }

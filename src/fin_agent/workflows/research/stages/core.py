@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from fin_agent.domain.types import (
     EvidenceItem,
+    FinancialsPlanItem,
     LLMMessage,
     MarketDataPlanItem,
     RetrievalPlan,
@@ -124,6 +126,16 @@ def _fallback_plan(ctx: ResearchContext) -> RetrievalPlan:
 
 async def retrieve(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
     plan = ctx.plan
+    illustrated = ctx.request.template == "illustrated_research"
+    if illustrated:
+        ticker = ctx.request.ticker or (plan.market_data[0].ticker if plan.market_data else None)
+        if ticker and not any(m.ticker == ticker for m in plan.market_data):
+            plan.market_data.append(MarketDataPlanItem(ticker=ticker))
+        if ticker and not any(f.ticker == ticker for f in plan.financials):
+            plan.financials.append(FinancialsPlanItem(ticker=ticker))
+        ctx.metadata["captured_at"] = datetime.now(UTC).isoformat()
+        ctx.metadata["report_market"] = []
+        ctx.metadata["report_financials"] = []
     new_evidence: list[EvidenceItem] = []
 
     for item in plan.search_queries:
@@ -151,6 +163,8 @@ async def retrieve(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
                 period=md_item.period,
             )
             if md_resp.data:
+                if illustrated:
+                    ctx.metadata["report_market"].append(md_resp.model_dump(mode="json"))
                 latest = max(md_resp.data, key=lambda row: row.trade_date)
                 new_evidence.append(
                     EvidenceItem(
@@ -173,6 +187,8 @@ async def retrieve(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
                 frequency=fin_item.frequency,
             )
             if fin_resp.data:
+                if illustrated:
+                    ctx.metadata["report_financials"].append(fin_resp.model_dump(mode="json"))
                 new_evidence.append(
                     EvidenceItem(
                         source=f"financials:{fin_item.ticker}:{fin_item.statement_type.value}",

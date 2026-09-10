@@ -311,6 +311,12 @@ async def synthesize(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
         ctx.fail("synthesize", "Report generation failed: no evidence available")
         return ctx
     evidence_text = render_evidence(ctx.evidence)
+    if ctx.request.template == "illustrated_research":
+        from fin_agent.services.report_data import build_report_data
+
+        figures = build_report_data(ctx)
+        evidence_text += "\nDeterministically computed chart facts:\n" + "\n".join(figures.summary)
+        evidence_text += "\nData gaps:\n" + "\n".join(figures.gaps)
     lang_instruction = get_lang_instruction(ctx.request.lang)
     system_content = SYNTHESIZE_SYSTEM_PROMPT + "\n" + lang_instruction
     if ctx.skill_instructions:

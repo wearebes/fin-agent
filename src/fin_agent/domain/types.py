@@ -15,6 +15,7 @@ from fin_agent.domain.constants import (
     RegulatoryRedLineStatus,
     RunStatus,
 )
+from fin_agent.domain.reports import ReportData
 
 
 class ResearchTurn(BaseModel):
@@ -117,6 +118,7 @@ class RunResult(BaseModel):
     report: str = Field(default="", description="Synthesized research report text.")
     evidence: list[EvidenceItem]
     trace: list[TraceRecord]
+    report_data: ReportData | None = None
 
 
 class TraceResponse(BaseModel):
@@ -152,6 +154,9 @@ class MarketDataResponse(BaseModel):
     asset_type: AssetType
     frequency: DataFrequency = Field(default=DataFrequency.DAILY)
     data: list[MarketDataPoint] = Field(default_factory=list)
+    source: str | None = None
+    currency: str | None = None
+    price_basis: str | None = None
 
 
 class FinancialStatementRecord(BaseModel):
@@ -202,6 +207,8 @@ class FinancialStatementResponse(BaseModel):
     ticker: str
     statement_type: FinancialStatementType
     data: list[FinancialStatementRecord] = Field(default_factory=list)
+    source: str | None = None
+    currency: str | None = None
 
 
 class AnalystRecommendation(BaseModel):

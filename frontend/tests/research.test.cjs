@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict')
 const { test } = require('node:test')
 const path = require('node:path')
-const { buildSync } = require('esbuild')
+const { buildSync } = require('node:module').createRequire(require.resolve('vite/package.json'))('esbuild')
 const React = require('react')
 const { renderToStaticMarkup } = require('react-dom/server')
 
@@ -157,4 +157,34 @@ test('failed result retains report and data, offers retry, and never links unsaf
   assert.match(html, /未成功完成或未通过审查/)
   assert.doesNotMatch(html, /href="javascript:/)
   assert.match(html, /class="retry-btn" disabled=""/)
+})
+
+test('illustrated report retains missing and negative observations and labels data-only output', () => {
+  const ReportFigures = load('components/ReportFigures.tsx').default
+  const html = renderToStaticMarkup(React.createElement(ReportFigures, { en: false, data: {
+    captured_at: '2025-01-01T00:00:00Z', narrative: 'data_only', metrics: [], summary: [], gaps: ['无估值数据'],
+    charts: [{ title: '年度净利润', kind: 'bar', unit: 'USD', labels: ['2023', '2024', '2025'],
+      series: [{ name: '净利润', values: [-50, null, 10] }], source: 'Offline fixture', note: 'Fiscal years' }],
+  } }))
+  assert.match(html, /AI 研报未完成/)
+  assert.match(html, /Offline fixture/)
+  assert.match(html, /-50/)
+  assert.match(html, /—/)
+  assert.equal((html.match(/<rect /g) || []).length, 2)
+  assert.match(html, /无估值数据/)
+})
+
+test('background job request keeps own model source and stable submission id', async () => {
+  let sent
+  const api = load('api/jobs.ts', {
+    localStorage: { getItem: () => 'offline-user-token' },
+    fetch: async (url, options) => { sent = { url, options }; return Response.json({ id: 'job-id' }, { status: 202 }) },
+  })
+  assert.deepEqual(await api.submitJob(result.request, 'personal', 'stable-request'), { id: 'job-id' })
+  assert.equal(sent.url, '/v1/research/jobs')
+  assert.equal(sent.options.headers.Authorization, 'Bearer offline-user-token')
+  const body = JSON.parse(sent.options.body)
+  assert.equal(body.source, 'personal')
+  assert.equal(body.client_id, 'stable-request')
+  assert.equal(body.api_key, undefined)
 })

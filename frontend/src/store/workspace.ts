@@ -36,6 +36,8 @@ export interface Message {
   durationMs?: number
   history?: ResearchTurn[]
   progress?: ResearchProgress
+  jobId?: string
+  jobClientId?: string
   createdAt: number
   updatedAt: number
 }
@@ -327,6 +329,7 @@ export const useWorkspace = create<WorkspaceState>()(
         if (!state) return
         for (const message of state.messages) {
           if (message.role !== 'assistant' || message.status !== 'running') continue
+          if (message.jobClientId) continue
           message.status = 'failed'
           message.error = '请求被刷新中断，请重试。 / Request was interrupted by a reload — please retry.'
         }

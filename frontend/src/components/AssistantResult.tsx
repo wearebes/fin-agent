@@ -6,6 +6,7 @@ import type { Lang, RunResult, RunStatus } from '../types'
 import Markdown from './Markdown'
 import ResearchProcessPanel from './ResearchProcessPanel'
 import EvidencePanel from './EvidencePanel'
+import ReportFigures from './ReportFigures'
 
 const pillClass = (status: RunStatus): string => {
   if (status === 'completed') return 'completed'
@@ -83,7 +84,9 @@ export default function AssistantResult({
         ))}
       </nav>
       <section className="result-panel" hidden={section !== 'report'} aria-label={t('report')}>
-        {result.report ? <Markdown>{result.report}</Markdown> : <p>{t('noReport')}</p>}
+        {result.report_data ? <ReportFigures data={result.report_data} en={lang === 'en'}>
+          {result.report ? <Markdown>{result.report}</Markdown> : <p>{t('noReport')}</p>}
+        </ReportFigures> : result.report ? <Markdown>{result.report}</Markdown> : <p>{t('noReport')}</p>}
       </section>
       <section className="result-panel" hidden={section !== 'dataSources'} aria-label={t('dataSources')}>
         <h3 className="print-only">{t('dataSources')}</h3>
