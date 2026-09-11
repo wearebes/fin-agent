@@ -52,12 +52,12 @@ const copy = {
       trigger: '查看标的代码说明', close: '收起说明', title: '标的怎么填？',
       note: '填“行情代码”，不要只填公司名称。股票代码通常可在 Yahoo Finance 或券商行情页搜索后复制。',
       rules: [
-        'A 股：6 位数字，如比亚迪 002594、腾景科技 688195；不需要 SH / SZ 后缀。',
+        'A 股和科创板：都填 6 位数字，如比亚迪 002594、科创板中芯国际 688981；不需要 SH / SZ 后缀。',
         '美股：英文代码，如苹果 AAPL；港股加 .HK，如腾讯 0700.HK。',
         '日韩股票须带市场后缀：SK 海力士 000660.KS；丰田 7203.T。',
         '指数可填常见简称（如 NDX100、沪深300），也可填 ^NDX、^GSPC、^HSI 等完整代码。',
       ],
-      examples: [['比亚迪', '002594'], ['苹果', 'AAPL'], ['腾讯', '0700.HK'], ['SK 海力士', '000660.KS'], ['纳斯达克 100', 'NDX100']],
+      examples: [['比亚迪', '002594'], ['中芯国际（科创板）', '688981'], ['苹果', 'AAPL'], ['腾讯', '0700.HK'], ['SK 海力士', '000660.KS'], ['纳斯达克 100', 'NDX100']],
     },
     benchmarkHelp: {
       trigger: '查看基准说明', close: '收起说明', title: '基准怎么选？',
@@ -98,12 +98,12 @@ const copy = {
       trigger: 'Show ticker guidance', close: 'Hide guidance', title: 'How do I enter a ticker?',
       note: 'Enter a market symbol, not just a company name. Copy it from Yahoo Finance or your broker.',
       rules: [
-        'China A shares: six digits, e.g. BYD 002594; no SH/SZ suffix required.',
+        'China A shares and STAR Market: six digits, e.g. BYD 002594 or SMIC 688981; no SH/SZ suffix required.',
         'US: ticker letters, e.g. Apple AAPL. Hong Kong: add .HK, e.g. Tencent 0700.HK.',
         'Japan and Korea require their market suffixes: SK hynix 000660.KS; Toyota 7203.T.',
         'Common index aliases work (NDX100, CSI 300); full codes such as ^NDX, ^GSPC and ^HSI work too.',
       ],
-      examples: [['BYD', '002594'], ['Apple', 'AAPL'], ['Tencent', '0700.HK'], ['SK hynix', '000660.KS'], ['Nasdaq 100', 'NDX100']],
+      examples: [['BYD', '002594'], ['SMIC (STAR)', '688981'], ['Apple', 'AAPL'], ['Tencent', '0700.HK'], ['SK hynix', '000660.KS'], ['Nasdaq 100', 'NDX100']],
     },
     benchmarkHelp: {
       trigger: 'Show benchmark guidance', close: 'Hide guidance', title: 'How do I choose a benchmark?',
