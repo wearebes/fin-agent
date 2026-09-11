@@ -50,13 +50,25 @@ const copy = {
     },
     tickerHelp: {
       trigger: '查看标的代码说明', close: '收起说明', title: '标的怎么填？',
-      note: '可直接填常用简称，系统会自动转换为行情代码；不需要记忆 ^ 等特殊符号。',
-      examples: [['比亚迪', '002594'], ['纳斯达克 100', 'NDX100'], ['纳指 100 ETF', 'QQQ'], ['苹果', 'AAPL']],
+      note: '填“行情代码”，不要只填公司名称。股票代码通常可在 Yahoo Finance 或券商行情页搜索后复制。',
+      rules: [
+        'A 股：6 位数字，如比亚迪 002594、腾景科技 688195；不需要 SH / SZ 后缀。',
+        '美股：英文代码，如苹果 AAPL；港股加 .HK，如腾讯 0700.HK。',
+        '日韩股票须带市场后缀：SK 海力士 000660.KS；丰田 7203.T。',
+        '指数可填常见简称（如 NDX100、沪深300），也可填 ^NDX、^GSPC、^HSI 等完整代码。',
+      ],
+      examples: [['比亚迪', '002594'], ['苹果', 'AAPL'], ['腾讯', '0700.HK'], ['SK 海力士', '000660.KS'], ['纳斯达克 100', 'NDX100']],
     },
     benchmarkHelp: {
       trigger: '查看基准说明', close: '收起说明', title: '基准怎么选？',
-      note: '可留空：只评估策略自身表现。需要比较相对收益时，选择与标的市场相近的宽基。',
-      examples: [['沪深 300', '000300'], ['标普 500', 'SPY'], ['纳斯达克 100', 'NDX100'], ['恒生指数', '^HSI']],
+      note: '基准不是必填项。只想看策略本身的收益、回撤和交易成本时，直接留空。',
+      rules: [
+        '需要看相对大盘的表现、Alpha 或 Beta 时，再选与标的“同一市场”的宽基指数。',
+        'A 股常用 000300（沪深 300）；美股大盘用 ^GSPC（标普 500），科技股可用 NDX100。',
+        '港股用 ^HSI（恒生指数）；韩国股票用 ^KS11（KOSPI）。不要把另一只个股当作基准。',
+        '例：评估 SK 海力士时，标的填 000660.KS，基准填 ^KS11；若只审计策略自身，基准留空。',
+      ],
+      examples: [['沪深 300', '000300'], ['标普 500', '^GSPC'], ['纳斯达克 100', 'NDX100'], ['恒生指数', '^HSI'], ['韩国 KOSPI', '^KS11']],
     },
   },
   en: {
@@ -84,13 +96,25 @@ const copy = {
     },
     tickerHelp: {
       trigger: 'Show ticker guidance', close: 'Hide guidance', title: 'How do I enter a ticker?',
-      note: 'Common names are accepted and converted to market symbols automatically.',
-      examples: [['BYD', '002594'], ['Nasdaq 100', 'NDX100'], ['Nasdaq 100 ETF', 'QQQ'], ['Apple', 'AAPL']],
+      note: 'Enter a market symbol, not just a company name. Copy it from Yahoo Finance or your broker.',
+      rules: [
+        'China A shares: six digits, e.g. BYD 002594; no SH/SZ suffix required.',
+        'US: ticker letters, e.g. Apple AAPL. Hong Kong: add .HK, e.g. Tencent 0700.HK.',
+        'Japan and Korea require their market suffixes: SK hynix 000660.KS; Toyota 7203.T.',
+        'Common index aliases work (NDX100, CSI 300); full codes such as ^NDX, ^GSPC and ^HSI work too.',
+      ],
+      examples: [['BYD', '002594'], ['Apple', 'AAPL'], ['Tencent', '0700.HK'], ['SK hynix', '000660.KS'], ['Nasdaq 100', 'NDX100']],
     },
     benchmarkHelp: {
       trigger: 'Show benchmark guidance', close: 'Hide guidance', title: 'How do I choose a benchmark?',
-      note: 'Leave blank for absolute performance; otherwise choose a broad index from the same market.',
-      examples: [['CSI 300', '000300'], ['S&P 500', 'SPY'], ['Nasdaq 100', 'NDX100'], ['Hang Seng', '^HSI']],
+      note: 'It is optional. Leave it blank to evaluate the strategy by itself.',
+      rules: [
+        'Add one only when you need relative return, Alpha or Beta; choose a broad index in the same market.',
+        'China A shares: 000300 (CSI 300). US: ^GSPC (S&P 500); US technology: NDX100.',
+        'Hong Kong: ^HSI (Hang Seng). Korea: ^KS11 (KOSPI). Do not use another individual stock.',
+        'Example: SK hynix uses 000660.KS with ^KS11, or leave the benchmark blank for an absolute audit.',
+      ],
+      examples: [['CSI 300', '000300'], ['S&P 500', '^GSPC'], ['Nasdaq 100', 'NDX100'], ['Hang Seng', '^HSI'], ['KOSPI', '^KS11']],
     },
   },
 }
@@ -269,7 +293,7 @@ export default function QuantWorkbench() {
             <label><span>{labels.ticker}<button className="qf-help-trigger" type="button" aria-label={labels.tickerHelp.trigger} aria-expanded={help === 'ticker'} onClick={() => toggleHelp('ticker')}><CircleHelp size={14} /></button></span><input value={form.ticker} onChange={(event) => update('ticker', event.target.value)} placeholder="002594 / NDX100 / AAPL" required /></label>
             <label><span>{labels.benchmark}<button className="qf-help-trigger" type="button" aria-label={labels.benchmarkHelp.trigger} aria-expanded={help === 'benchmark'} onClick={() => toggleHelp('benchmark')}><CircleHelp size={14} /></button></span><input value={form.benchmark} onChange={(event) => update('benchmark', event.target.value)} placeholder={lang === 'zh' ? '可留空；需要比较时再填写' : 'Optional; add only for comparison'} /></label>
           </div>
-          {help && <aside className="qf-code-help" role="note"><header><strong>{labels[`${help}Help`].title}</strong><button type="button" onClick={() => setHelp(null)}>{labels[`${help}Help`].close}</button></header><p>{labels[`${help}Help`].note}</p><div className="qf-symbol-examples">{labels[`${help}Help`].examples.map(([name, symbol]) => <button type="button" key={symbol} onClick={() => { update(help, symbol); setHelp(null) }}><span>{name}</span><b>{symbol}</b></button>)}</div></aside>}
+          {help && <aside className="qf-code-help" role="note"><header><strong>{labels[`${help}Help`].title}</strong><button type="button" onClick={() => setHelp(null)}>{labels[`${help}Help`].close}</button></header><p>{labels[`${help}Help`].note}</p><ul>{labels[`${help}Help`].rules.map((rule) => <li key={rule}>{rule}</li>)}</ul><div className="qf-symbol-examples">{labels[`${help}Help`].examples.map(([name, symbol]) => <button type="button" key={symbol} onClick={() => { update(help, symbol); setHelp(null) }}><span>{name}</span><b>{symbol}</b></button>)}</div></aside>}
           <div className="qf-fields qf-fields-2">
             <label><span>{labels.period}</span><select value={form.period} onChange={(event) => update('period', event.target.value as ForensicsInput['period'])}><option value="1y">1 year</option><option value="2y">2 years</option><option value="5y">5 years</option><option value="10y">10 years</option></select></label>
             <label><span>{labels.cost}</span><div className="qf-unit-input"><input type="number" min="0" max="100" value={form.transaction_cost_bps} onChange={(event) => update('transaction_cost_bps', Number(event.target.value))} /><em>bps</em></div></label>
