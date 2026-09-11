@@ -89,6 +89,18 @@ class FakeLLM:
         return LLMResponse(message=LLMMessage(role="assistant", content=content))
 
 
+class FailingLLM:
+    async def chat(
+        self,
+        messages: list[LLMMessage],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> LLMResponse:
+        del messages, temperature, max_tokens
+        raise RuntimeError("Model unavailable")
+
+
 @pytest.mark.asyncio
 async def test_forensics_report_is_complete_and_reproducible() -> None:
     service = ForensicsService(FakeMarketData())
@@ -157,6 +169,20 @@ async def test_llm_can_only_replace_narrative() -> None:
 
 
 @pytest.mark.asyncio
+async def test_forensics_keeps_numeric_report_when_ai_narrative_is_unavailable() -> None:
+    report = await ForensicsService(FakeMarketData(), FailingLLM()).diagnose(
+        ForensicsRequest(ticker="TEST", benchmark="SPY")
+    )
+
+    assert report.narrative.generated_by_ai is False
+    baseline = await ForensicsService(FakeMarketData()).diagnose(
+        ForensicsRequest(ticker="TEST", benchmark="SPY")
+    )
+    assert report.metrics == baseline.metrics
+    assert report.equity_curve == baseline.equity_curve
+
+
+@pytest.mark.asyncio
 async def test_forensics_without_benchmark_keeps_absolute_strategy_evaluation() -> None:
     report = await ForensicsService(FakeMarketData()).diagnose(
         ForensicsRequest(ticker="TEST", benchmark="")
@@ -218,6 +244,18 @@ def test_forensics_api_returns_report() -> None:
     payload = response.json()
     assert payload["ticker"] == "TEST"
     assert len(payload["checks"]) == 6
+
+
+def test_forensics_api_returns_report_when_optional_model_is_disabled() -> None:
+    from fin_agent.adapters.llm.disabled import DisabledLLM
+
+    with TestClient(_api(ForensicsService(FakeMarketData(), DisabledLLM()))) as client:
+        response = client.post(
+            "/v1/quant/forensics/runs", json={"ticker": "AAPL", "benchmark": "NDX100"},
+        )
+    assert response.status_code == 200
+    assert response.json()["benchmark"] == "^NDX"
+    assert response.json()["narrative"]["generated_by_ai"] is False
 
 
 def test_forensics_api_accepts_an_empty_optional_benchmark() -> None:

@@ -61,7 +61,7 @@ Evaluate the report for:
 - Logical consistency
 - Clarity and professionalism
 
-Respond with a JSON object:
+Respond with only a JSON object, keeping feedback under 120 words:
 {"passed": true/false, "feedback": "explanation of issues or approval"}
 If the report is adequate, set passed=true.
 Compare numeric claims, dates, and citations with the supplied evidence.
@@ -380,8 +380,8 @@ async def review(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
             review_text = match.group(1)
         decision = ReviewDecision.model_validate_json(review_text)
         passed, feedback = decision.passed, decision.feedback
-    except Exception:
-        logger.exception("review: LLM call or parse failed")
+    except Exception as exc:
+        logger.warning("review: response unavailable or invalid (%s)", type(exc).__name__)
         passed = False
         feedback = "Review could not be completed; report remains unverified."
 

@@ -389,3 +389,6 @@ def test_local_launcher_binds_only_explicit_existing_username(tmp_path):
     assert owner_settings.codex.enabled
     assert owner_settings.codex.owner_user_id == user_id
     assert not owner_settings.runtime.allow_system_model
+    existing = local_settings(tmp_path / "desktop", "offline-owner", settings.database.url)
+    assert existing.database.url == settings.database.url
+    assert existing.codex.owner_user_id == user_id

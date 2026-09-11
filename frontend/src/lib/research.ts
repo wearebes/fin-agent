@@ -23,6 +23,21 @@ export function safeSourceUrl(value: unknown): string | null {
   }
 }
 
+export function researchIssue(result: RunResult, lang: Lang): string | null {
+  if (result.status !== 'failed') return null
+  const details = (result.trace ?? []).map((item) => item.detail)
+  if (details.some((detail) => detail.includes('no evidence available'))) return lang === 'zh'
+    ? '未取得可用资料：请检查数据源或明确公司名称与代码。模型连接成功不代表行情、财务和搜索数据源都可用。'
+    : 'No usable evidence was retrieved. Check data sources or specify the company and ticker.'
+  if (details.some((detail) => detail.includes('Review could not be completed'))) return lang === 'zh'
+    ? '正文已生成，自动复核未完成：复核模型未返回有效的审核结果。报告和图表已保留，使用前请核验数据与来源。'
+    : 'Draft generated; automated review returned no valid decision. Report and charts are retained for verification.'
+  if (details.some((detail) => detail.includes('Review did not pass'))) return lang === 'zh'
+    ? '正文已生成，但未通过自动复核。请查看执行记录中的复核意见，核对后再使用。'
+    : 'Draft generated but rejected by automated review. Check the review feedback before use.'
+  return null
+}
+
 export function reportMarkdown(result: RunResult, lang: Lang): string {
   const warning = result.status !== 'completed'
     ? (lang === 'zh' ? '> 本次研究未完成或未通过审查，请勿直接采用。\n\n'

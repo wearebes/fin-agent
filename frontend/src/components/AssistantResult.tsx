@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Copy, Download, Printer } from 'lucide-react'
 import { translate } from '../i18n'
-import { reportMarkdown } from '../lib/research'
+import { reportMarkdown, researchIssue } from '../lib/research'
 import type { Lang, RunResult, RunStatus } from '../types'
 import Markdown from './Markdown'
 import ResearchProcessPanel from './ResearchProcessPanel'
@@ -69,9 +69,9 @@ export default function AssistantResult({
 
       {result.status === 'failed' && (
         <p role="alert">
-          {lang === 'zh'
+          {researchIssue(result, lang) || (lang === 'zh'
             ? '本次研究未成功完成或未通过审查。下方内容仅供排查，请核对证据与执行记录。'
-            : 'Research did not complete successfully or pass review. Verify the evidence and execution trace before using this report.'}
+            : 'Research did not complete successfully or pass review. Verify the evidence and execution trace before using this report.')}
         </p>
       )}
 

@@ -5,6 +5,7 @@ import { getJob, jobStage, listJobs, submitJob } from '../api/jobs'
 import { useUserStore } from '../store/user'
 import { useWorkspace } from '../store/workspace'
 import AssistantResult from './AssistantResult'
+import { researchIssue } from '../lib/research'
 
 export default function ResearchTasks() {
   const { jobId } = useParams()
@@ -36,7 +37,7 @@ export default function ResearchTasks() {
     {jobId && <section className="research-task-report">{detail.isLoading ? <p>{en ? 'Loading report…' : '正在读取研报…'}</p> : job && <>
       <header><span className={`research-task-status ${job.status}`}>{jobStage(job.stage, en)}</span><h2>{job.request.question}</h2></header>
       {['queued', 'running'].includes(job.status) && <p role="status">{en ? 'Running on your local service. You can leave this page.' : '任务在本机后台执行中，可以离开此页面。'}</p>}
-      {job.error && <p role="alert">{job.error}</p>}
+      {job.error && <p role="alert">{(job.result && researchIssue(job.result, en ? 'en' : 'zh')) || job.error}</p>}
       {['failed', 'interrupted'].includes(job.status) && <button className="research-primary" disabled={retrying} onClick={async () => {
         setRetrying(true); setError('')
         try { const next = await submitJob(job.request, job.source, crypto.randomUUID()); await jobs.refetch(); navigate(`/research/tasks/${next.id}`) }

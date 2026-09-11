@@ -28,6 +28,20 @@ const result = {
   ]) }],
 }
 const input = { question: 'q', ticker: null, lang: 'zh' }
+test('historical failed reports distinguish unavailable review, rejection and missing evidence', () => {
+  const { researchIssue, reportMarkdown } = load('lib/research.ts')
+  for (const [detail, expected] of [
+    ['Review needs revision: Review could not be completed; report remains unverified.', '自动复核未完成'],
+    ['Review did not pass; report requires verification', '未通过自动复核'],
+    ['Report generation failed: no evidence available', '未取得可用资料'],
+  ]) {
+    const failed = { ...result, status: 'failed', trace: [{ stage: 'review', detail }] }
+    assert.ok(researchIssue(failed, 'zh').includes(expected))
+    assert.ok(reportMarkdown(failed, 'zh').includes('请勿直接采用'))
+    assert.equal(failed.status, 'failed')
+  }
+  assert.equal(researchIssue(result, 'zh'), null)
+})
 const event = (name, data) => `event: ${name}\r\ndata: ${JSON.stringify(data)}\r\n\r\n`
 function stream(text, chunkSize = 7) {
   const bytes = new TextEncoder().encode(text)

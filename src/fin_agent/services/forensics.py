@@ -8,6 +8,7 @@ alter returns, scores, or verdicts.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import statistics
 from collections.abc import Sequence
@@ -31,6 +32,8 @@ from fin_agent.domain.forensics import (
     StrategyKind,
 )
 from fin_agent.domain.types import LLMMessage, LLMResponse, MarketDataResponse
+
+logger = logging.getLogger(__name__)
 
 
 class MarketDataSource(Protocol):
@@ -742,21 +745,26 @@ class ForensicsService:
             "checks": [check.model_dump(mode="json") for check in checks],
         }
         language = "Simplified Chinese" if request.lang == "zh" else "English"
-        response = await self._llm.chat(
-            [
-                LLMMessage(
-                    role="system",
-                    content=(
-                        "You explain a completed quantitative strategy audit. Never alter numbers, "
-                        "promise returns, or add facts. Return JSON only with three short strings: "
-                        "summary, primary_cause, repair_action. Use " + language + "."
+        try:
+            response = await self._llm.chat(
+                [
+                    LLMMessage(
+                        role="system",
+                        content=(
+                            "You explain a completed quantitative strategy audit. "
+                            "Never alter numbers, promise returns, or add facts. "
+                            "Return JSON only with three short strings: "
+                            "summary, primary_cause, repair_action. Use " + language + "."
+                        ),
                     ),
-                ),
-                LLMMessage(role="user", content=json.dumps(payload, ensure_ascii=False)),
-            ],
-            temperature=0.1,
-            max_tokens=320,
-        )
+                    LLMMessage(role="user", content=json.dumps(payload, ensure_ascii=False)),
+                ],
+                temperature=0.1,
+                max_tokens=320,
+            )
+        except Exception:
+            logger.info("Quant narrative unavailable; returning deterministic audit narrative.")
+            return fallback
         content = response.message.content.strip()
         if not content:
             return fallback
@@ -766,7 +774,7 @@ class ForensicsService:
                 content = content[4:].strip()
         try:
             parsed = json.loads(content)
-            if not all(
+            if not isinstance(parsed, dict) or not all(
                 isinstance(parsed.get(key), str)
                 for key in ("summary", "primary_cause", "repair_action")
             ):

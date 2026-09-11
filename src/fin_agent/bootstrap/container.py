@@ -183,7 +183,9 @@ def build_container(settings: AppSettings) -> Container:
             deps=deps,
             skill_dispatcher=skill_dispatcher,
         ),
-        forensics_service=ForensicsService(market_data=market_data, llm=llm),
+        forensics_service=ForensicsService(
+            market_data=market_data, llm=None if isinstance(llm, DisabledLLM) else llm,
+        ),
         auth_service=auth_service,
         skill_registry=skill_catalog.to_registry(),
         skill_catalog=skill_catalog,
