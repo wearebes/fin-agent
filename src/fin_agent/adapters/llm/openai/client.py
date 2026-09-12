@@ -193,7 +193,7 @@ class OpenAIClient:
 
             if not response.choices:
                 logger.warning("LLM returned empty choices for model=%s", self._config.model)
-                return empty
+                return empty.model_copy(update={"error_code": "empty_response"})
 
             choice = response.choices[0]
             message = _from_openai_message(choice.message)
@@ -210,4 +210,4 @@ class OpenAIClient:
         except Exception as exc:
             # Provider error bodies can echo credentials; never log their raw contents.
             logger.warning("LLM request failed: %s", type(exc).__name__)
-            return empty
+            return empty.model_copy(update={"error_code": type(exc).__name__})

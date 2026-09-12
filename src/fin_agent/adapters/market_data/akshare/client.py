@@ -7,6 +7,7 @@ from typing import Any
 
 import akshare as ak
 import pandas as pd
+import requests
 
 from fin_agent.adapters.market_data.akshare.config import AKShareConfig
 from fin_agent.domain.constants import AssetType, DataFrequency, FinancialStatementType
@@ -22,7 +23,7 @@ from fin_agent.domain.types import (
 
 logger = logging.getLogger(__name__)
 
-#定义获取时间
+# 定义获取时间
 _PERIOD_DAYS: dict[str, int] = {
     "1mo": 30,
     "3mo": 90,
@@ -58,6 +59,9 @@ _HIST_COL_MAP: dict[str, str] = {
 }
 
 _INCOME_COL_MAP: dict[str, str] = {
+    "REPORT_DATE": "end_date",
+    "TOTAL_OPERATE_INCOME": "total_revenue",
+    "NETPROFIT": "net_income",
     "截止日期": "end_date",
     "营业总收入": "total_revenue",
     "净利润": "net_income",
@@ -67,6 +71,10 @@ _INCOME_COL_MAP: dict[str, str] = {
 }
 
 _BALANCE_COL_MAP: dict[str, str] = {
+    "REPORT_DATE": "end_date",
+    "TOTAL_ASSETS": "total_assets",
+    "TOTAL_LIABILITIES": "total_liabilities",
+    "TOTAL_EQUITY": "total_equity",
     "截止日期": "end_date",
     "总资产": "total_assets",
     "总负债": "total_liabilities",
@@ -74,6 +82,8 @@ _BALANCE_COL_MAP: dict[str, str] = {
 }
 
 _CASHFLOW_COL_MAP: dict[str, str] = {
+    "REPORT_DATE": "end_date",
+    "NETCASH_OPERATE": "operating_cash_flow",
     "截止日期": "end_date",
     "经营活动产生的现金流量净额": "operating_cash_flow",
     "自由现金流量": "free_cash_flow",
@@ -87,6 +97,7 @@ _INFO_COL_MAP: dict[str, str] = {
     "员工人数": "employees",
     "上市时间": "list_date",
 }
+
 
 def _nan_safe(value: Any) -> float | None:
     if value is None:
@@ -142,9 +153,7 @@ class AKShareClient:
         frequency: DataFrequency = DataFrequency.DAILY,
         period: str | None = None,
     ) -> MarketDataResponse:
-        empty = MarketDataResponse(
-            ticker=ticker, asset_type=asset_type, frequency=frequency
-        )
+        empty = MarketDataResponse(ticker=ticker, asset_type=asset_type, frequency=frequency)
         try:
             start_date = _period_to_start(period or self._config.history_period)
             end_date = date.today().strftime("%Y%m%d")
@@ -196,26 +205,27 @@ class AKShareClient:
         *,
         frequency: DataFrequency = DataFrequency.YEARLY,
     ) -> FinancialStatementResponse:
-        empty = FinancialStatementResponse(
-            ticker=ticker, statement_type=statement_type
-        )
+        empty = FinancialStatementResponse(ticker=ticker, statement_type=statement_type)
         try:
-            symbol = re.sub(r"[a-zA-Z]", "", ticker)
+            symbol = re.sub(r"[^0-9]", "", ticker)
             df = self._fetch_statement(symbol, statement_type)
             if df is None or df.empty:
                 return empty
 
             col_map = self._col_map_for(statement_type)
             df = _map_df_columns(df, col_map)
+            df["end_date"] = pd.to_datetime(df["end_date"], errors="coerce")
+            df = df.dropna(subset=["end_date"]).sort_values("end_date", ascending=False)
+            if frequency == DataFrequency.YEARLY:
+                df = df[df["end_date"].dt.month.eq(12) & df["end_date"].dt.day.eq(31)]
+            df = df.drop_duplicates("end_date").head(8)
 
             records: list[FinancialStatementRecord] = []
             for _, row in df.iterrows():
                 end_date = pd.to_datetime(row["end_date"])
                 fiscal_year = end_date.year
                 fiscal_quarter = (
-                    (end_date.month - 1) // 3 + 1
-                    if frequency == DataFrequency.QUARTERLY
-                    else None
+                    (end_date.month - 1) // 3 + 1 if frequency == DataFrequency.QUARTERLY else None
                 )
                 records.append(
                     FinancialStatementRecord(
@@ -235,7 +245,11 @@ class AKShareClient:
                     )
                 )
             return FinancialStatementResponse(
-                ticker=ticker, statement_type=statement_type, data=records
+                ticker=ticker,
+                statement_type=statement_type,
+                data=records,
+                source="Eastmoney financial statements (CNY; income/cash flow year-to-date)",
+                currency="CNY",
             )
         except Exception:
             logger.exception("get_financials failed for ticker=%s", ticker)
@@ -250,30 +264,53 @@ class AKShareClient:
         return AnalystResponse(ticker=ticker)
 
     def get_company_info(self, ticker: str) -> CompanyInfo:
+        result = CompanyInfo(ticker=ticker)
         try:
-            symbol = re.sub(r"[a-zA-Z]", "", ticker)
-            raw = ak.stock_individual_info_em(symbol=symbol)
-            if raw is None or raw.empty:
-                return CompanyInfo(ticker=ticker)
+            symbol = re.sub(r"[^0-9]", "", ticker)
+            raw = ak.stock_individual_info_em(symbol=symbol, timeout=15)
             info_dict: dict[str, str] = {}
-            for _, row in raw.iterrows():
-                info_dict[str(row.iloc[0])] = str(row.iloc[1])
+            if raw is not None:
+                for _, row in raw.iterrows():
+                    info_dict[str(row.iloc[0])] = str(row.iloc[1])
             employees_raw = info_dict.get("员工人数")
             employees = _int_safe(employees_raw) if employees_raw else None
-            return CompanyInfo(
+            result = CompanyInfo(
                 ticker=ticker,
-                name=info_dict.get("公司名称"),
+                name=info_dict.get("公司名称") or info_dict.get("股票简称"),
                 sector=info_dict.get("行业"),
                 industry=info_dict.get("行业"),
                 country=info_dict.get("地区"),
-                market_cap=None,
+                market_cap=_nan_safe(info_dict.get("总市值")),
                 description=info_dict.get("公司简介"),
                 employees=employees,
                 founded_year=None,
             )
         except Exception:
             logger.exception("get_company_info failed for ticker=%s", ticker)
-            return CompanyInfo(ticker=ticker)
+        if not result.description:
+            try:
+                response = requests.get(
+                    "https://emweb.securities.eastmoney.com/PC_HSF10/CompanySurvey/PageAjax",
+                    params={"code": _normalize_a_ticker(ticker).upper()},
+                    timeout=15,
+                )
+                response.raise_for_status()
+                rows = response.json().get("jbzl") or []
+                info = next(
+                    row for row in rows if row.get("SECURITY_CODE") == re.sub(r"[^0-9]", "", ticker)
+                )
+                profile = CompanyInfo(
+                    ticker=ticker,
+                    name=info.get("ORG_NAME"),
+                    industry=info.get("INDUSTRYCSRC1"),
+                    description=info.get("ORG_PROFILE"),
+                    country="China",
+                    employees=_int_safe(info.get("EMP_NUM")),
+                )
+                return result.model_copy(update=profile.model_dump(exclude_none=True))
+            except Exception:
+                logger.warning("Company profile fallback unavailable for %s", ticker)
+        return result
 
     def get_crypto_data(
         self,
@@ -289,10 +326,9 @@ class AKShareClient:
         return CryptoDataResponse(ticker=ticker)
 
     @staticmethod
-    def _fetch_statement(
-        symbol: str, stmt_type: FinancialStatementType
-    ) -> pd.DataFrame | None:
+    def _fetch_statement(symbol: str, stmt_type: FinancialStatementType) -> pd.DataFrame | None:
         try:
+            symbol = _normalize_a_ticker(symbol).upper()
             if stmt_type == FinancialStatementType.INCOME_STATEMENT:
                 return ak.stock_profit_sheet_by_report_em(symbol=symbol)
             if stmt_type == FinancialStatementType.BALANCE_SHEET:

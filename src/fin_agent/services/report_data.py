@@ -131,7 +131,7 @@ def build_report_data(ctx) -> ReportData:
                     ),
                 )
             )
-    for raw in ctx.metadata.get("report_financials", [])[:4]:
+    for raw in ctx.metadata.get("report_financials", []):
         response = FinancialStatementResponse.model_validate(raw)
         rows = sorted(
             [r for r in response.data if r.fiscal_quarter is None], key=lambda r: r.fiscal_year
@@ -148,13 +148,24 @@ def build_report_data(ctx) -> ReportData:
             for key, cn, en in [
                 ("total_revenue", "营业收入", "Revenue"),
                 ("net_income", "净利润", "Net income"),
+                ("total_assets", "总资产", "Assets"),
+                ("total_liabilities", "总负债", "Liabilities"),
+                ("operating_cash_flow", "经营现金流", "Operating cash flow"),
             ]
             if any(getattr(r, key) is not None for r in rows)
         ]
         if len(rows) >= 2 and series:
             output.charts.append(
                 ReportChart(
-                    title=f"{response.ticker} " + text("年度财务表现", "annual financials"),
+                    title=f"{response.ticker} "
+                    + text(
+                        {
+                            "income_statement": "年度收入与净利润",
+                            "balance_sheet": "年度资产与负债",
+                            "cash_flow": "年度经营现金流",
+                        }.get(response.statement_type.value, "年度财务表现"),
+                        response.statement_type.value.replace("_", " "),
+                    ),
                     kind="bar",
                     unit=response.currency
                     or text("原始报表单位（币种未提供）", "Original units (currency unspecified)"),

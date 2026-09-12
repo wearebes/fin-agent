@@ -26,6 +26,9 @@ export function safeSourceUrl(value: unknown): string | null {
 export function researchIssue(result: RunResult, lang: Lang): string | null {
   if (result.status !== 'failed') return null
   const details = (result.trace ?? []).map((item) => item.detail)
+  if (details.some((detail) => detail.startsWith('Report generation failed:'))
+    && !details.some((detail) => detail.includes('no evidence available'))) return result.report
+      || (lang === 'zh' ? '正文生成失败，请查看执行记录。' : 'Draft generation failed; check the execution log.')
   if (details.some((detail) => detail.includes('no evidence available'))) return lang === 'zh'
     ? '未取得可用资料：请检查数据源或明确公司名称与代码。模型连接成功不代表行情、财务和搜索数据源都可用。'
     : 'No usable evidence was retrieved. Check data sources or specify the company and ticker.'

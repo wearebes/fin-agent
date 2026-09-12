@@ -18,6 +18,7 @@ from fin_agent.adapters.llm.openai.config import OpenAIConfig
 
 
 class PersonalModelConfig(OpenAIConfig):
+    timeout_seconds: int = Field(default=180, ge=1)
     protocol: Literal["openai", "anthropic"] = "openai"
     token_parameter: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"
 

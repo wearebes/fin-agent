@@ -220,7 +220,9 @@ class TestGetCompanyInfo:
         assert info.employees == 25000
 
     @patch("fin_agent.adapters.market_data.akshare.client.ak.stock_individual_info_em")
-    def test_empty_info_returns_minimal(self, mock_info):
+    @patch("fin_agent.adapters.market_data.akshare.client.requests.get")
+    def test_empty_info_returns_minimal(self, mock_get, mock_info):
+        mock_get.side_effect = ConnectionError("unavailable")
         mock_info.return_value = pd.DataFrame()
         client = AKShareClient()
         info = client.get_company_info("600519")
@@ -229,7 +231,9 @@ class TestGetCompanyInfo:
         assert info.name is None
 
     @patch("fin_agent.adapters.market_data.akshare.client.ak.stock_individual_info_em")
-    def test_exception_returns_minimal(self, mock_info):
+    @patch("fin_agent.adapters.market_data.akshare.client.requests.get")
+    def test_exception_returns_minimal(self, mock_get, mock_info):
+        mock_get.side_effect = ConnectionError("unavailable")
         mock_info.side_effect = Exception("fail")
         client = AKShareClient()
         info = client.get_company_info("600519")

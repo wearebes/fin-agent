@@ -81,6 +81,20 @@ def _company_info(ticker: str, name: str | None, sector: str | None) -> CompanyI
 class TestGetMarketDataRouting:
     @patch("fin_agent.adapters.market_data.router.YFinanceClient")
     @patch("fin_agent.adapters.market_data.router.AKShareClient")
+    def test_suffixed_a_share_still_uses_akshare(self, MockAK, MockYF):
+        ak_instance = MagicMock()
+        MockAK.return_value = ak_instance
+        ak_instance.get_market_data.return_value = _market_resp("002214", "ak")
+
+        MarketDataRouter().get_market_data("002214.SZ", AssetType.STOCK)
+
+        ak_instance.get_market_data.assert_called_once_with(
+            "002214", AssetType.STOCK, frequency=DataFrequency.DAILY, period=None
+        )
+        MockYF.return_value.get_market_data.assert_not_called()
+
+    @patch("fin_agent.adapters.market_data.router.YFinanceClient")
+    @patch("fin_agent.adapters.market_data.router.AKShareClient")
     def test_a_stock_uses_akshare_primary(self, MockAK, MockYF):
         ak_instance = MagicMock()
         yf_instance = MagicMock()
@@ -203,6 +217,30 @@ class TestGetMarketDataRouting:
 
 
 class TestGetFinancialsFusion:
+    @patch("fin_agent.adapters.market_data.router.YFinanceClient")
+    @patch("fin_agent.adapters.market_data.router.AKShareClient")
+    def test_suffixed_a_share_uses_both_sources_with_normalized_codes(self, MockAK, MockYF):
+        MockYF.return_value.get_financials.return_value = _financial_resp(
+            "002214.SZ", 1.0, None
+        )
+        MockAK.return_value.get_financials.return_value = _financial_resp(
+            "002214", None, 2.0
+        )
+
+        result = MarketDataRouter().get_financials(
+            "002214.SZ", FinancialStatementType.INCOME_STATEMENT
+        )
+
+        MockYF.return_value.get_financials.assert_called_once_with(
+            "002214.SZ", FinancialStatementType.INCOME_STATEMENT,
+            frequency=DataFrequency.YEARLY,
+        )
+        MockAK.return_value.get_financials.assert_called_once_with(
+            "002214", FinancialStatementType.INCOME_STATEMENT,
+            frequency=DataFrequency.YEARLY,
+        )
+        assert result.data[0].net_income == 2.0
+
     @patch("fin_agent.adapters.market_data.router.YFinanceClient")
     @patch("fin_agent.adapters.market_data.router.AKShareClient")
     def test_merges_records_from_both_sources(self, MockAK, MockYF):

@@ -21,7 +21,10 @@ from fin_agent.domain.types import (
 
 logger = logging.getLogger(__name__)
 
-_A_SHARE_RE = re.compile(r"^(sh|sz|bj)?\d{6}$", re.IGNORECASE)
+_A_SHARE_RE = re.compile(
+    r"^(?:(?P<prefix>sh|sz|bj))?(?P<code>\d{6})(?:\.(?P<suffix>ss|sz|bj))?$",
+    re.IGNORECASE,
+)
 _SHANGHAI_INDEX_CODES = frozenset({"000001", "000016", "000300", "000688", "000852", "000905"})
 
 
@@ -34,6 +37,11 @@ def _is_a_share_ticker(ticker: str) -> bool:
     return bool(ticker) and bool(_A_SHARE_RE.match(ticker.strip()))
 
 
+def _a_share_code(ticker: str) -> str:
+    match = _A_SHARE_RE.fullmatch(ticker.strip())
+    return match.group("code") if match else ticker.strip()
+
+
 def _yahoo_a_share_ticker(ticker: str) -> str:
     """Translate the app's six-digit A-share input into Yahoo's suffix format.
 
@@ -41,12 +49,16 @@ def _yahoo_a_share_ticker(ticker: str) -> str:
     ``002594`` and ``000300``. Yahoo needs the exchange suffix only for the
     fallback request; users never need to type it.
     """
-    value = ticker.strip().lower()
-    prefix = value[:2] if value[:2] in {"sh", "sz", "bj"} else ""
-    code = value.removeprefix(prefix)
-    if prefix == "sh" or code.startswith(("6", "9")) or code in _SHANGHAI_INDEX_CODES:
+    match = _A_SHARE_RE.fullmatch(ticker.strip())
+    if not match:
+        return ticker.strip()
+    code = match.group("code")
+    market = (match.group("suffix") or match.group("prefix") or "").lower()
+    if market:
+        return f"{code}.{'SS' if market == 'sh' else market.upper()}"
+    if code.startswith(("6", "9")) or code in _SHANGHAI_INDEX_CODES:
         suffix = ".SS"
-    elif prefix == "bj" or code.startswith(("4", "8")):
+    elif market == "bj" or code.startswith(("4", "8")):
         suffix = ".BJ"
     else:
         suffix = ".SZ"
@@ -105,38 +117,22 @@ def _merge_records_by_year(
                 ticker=r.ticker,
                 statement_type=r.statement_type,
                 fiscal_year=r.fiscal_year,
-                fiscal_quarter=_first_non_none(
-                    r.fiscal_quarter, other.fiscal_quarter
-                ),
+                fiscal_quarter=_first_non_none(r.fiscal_quarter, other.fiscal_quarter),
                 revenue_yoy=_first_non_none(r.revenue_yoy, other.revenue_yoy),
-                net_profit_margin=_first_non_none(
-                    r.net_profit_margin, other.net_profit_margin
-                ),
-                premium_income=_first_non_none(
-                    r.premium_income, other.premium_income
-                ),
+                net_profit_margin=_first_non_none(r.net_profit_margin, other.net_profit_margin),
+                premium_income=_first_non_none(r.premium_income, other.premium_income),
                 inventory_turnover_days=_first_non_none(
                     r.inventory_turnover_days, other.inventory_turnover_days
                 ),
-                total_revenue=_first_non_none(
-                    r.total_revenue, other.total_revenue
-                ),
+                total_revenue=_first_non_none(r.total_revenue, other.total_revenue),
                 net_income=_first_non_none(r.net_income, other.net_income),
-                total_assets=_first_non_none(
-                    r.total_assets, other.total_assets
-                ),
-                total_liabilities=_first_non_none(
-                    r.total_liabilities, other.total_liabilities
-                ),
-                total_equity=_first_non_none(
-                    r.total_equity, other.total_equity
-                ),
+                total_assets=_first_non_none(r.total_assets, other.total_assets),
+                total_liabilities=_first_non_none(r.total_liabilities, other.total_liabilities),
+                total_equity=_first_non_none(r.total_equity, other.total_equity),
                 operating_cash_flow=_first_non_none(
                     r.operating_cash_flow, other.operating_cash_flow
                 ),
-                free_cash_flow=_first_non_none(
-                    r.free_cash_flow, other.free_cash_flow
-                ),
+                free_cash_flow=_first_non_none(r.free_cash_flow, other.free_cash_flow),
                 net_operating_cash_flow=_first_non_none(
                     r.net_operating_cash_flow, other.net_operating_cash_flow
                 ),
@@ -170,10 +166,13 @@ class MarketDataRouter:
         period: str | None = None,
     ) -> MarketDataResponse:
         is_a_share = _is_a_share_ticker(ticker) and asset_type in (
-            AssetType.STOCK, AssetType.ETF, AssetType.INDEX,
+            AssetType.STOCK,
+            AssetType.ETF,
+            AssetType.INDEX,
         )
         if is_a_share:
-            resp = self._ak.get_market_data(ticker, asset_type, frequency=frequency, period=period)
+            code = _a_share_code(ticker)
+            resp = self._ak.get_market_data(code, asset_type, frequency=frequency, period=period)
             if resp.data:
                 resp.source = "AKShare"
                 return resp
@@ -204,13 +203,21 @@ class MarketDataRouter:
         *,
         frequency: DataFrequency = DataFrequency.YEARLY,
     ) -> FinancialStatementResponse:
-        resp_a = self._yf.get_financials(ticker, statement_type, frequency=frequency)
+        is_a_share = _is_a_share_ticker(ticker)
+        yahoo_ticker = _yahoo_a_share_ticker(ticker) if is_a_share else ticker
+        resp_a = self._yf.get_financials(yahoo_ticker, statement_type, frequency=frequency)
         merged_data = resp_a.data
         sources = ["Yahoo Finance"] if merged_data else []
-        if _is_a_share_ticker(ticker):
-            resp_b = self._ak.get_financials(ticker, statement_type, frequency=frequency)
+        if is_a_share:
+            resp_b = self._ak.get_financials(
+                _a_share_code(ticker), statement_type, frequency=frequency
+            )
+            # Mainland interim cash flows/income are YTD; Yahoo quarters are standalone.
+            # Never combine the two bases into one apparently comparable record.
+            if resp_b.data and frequency == DataFrequency.QUARTERLY:
+                return resp_b.model_copy(update={"ticker": ticker})
             if resp_b.data:
-                sources.append("AKShare")
+                sources.append(resp_b.source or "AKShare")
             merged_data = _merge_records_by_year(merged_data, resp_b.data)
         if self._fmp._api_key:
             resp_c = self._fmp.get_financials(ticker, statement_type, frequency=frequency)
@@ -222,13 +229,15 @@ class MarketDataRouter:
             statement_type=statement_type,
             data=merged_data,
             source=" / ".join(sources) or None,
+            currency="CNY" if is_a_share else resp_a.currency,
         )
 
     def get_analyst_data(self, ticker: str) -> AnalystResponse:
         # AKShare analyst data is disabled (stock_rank_forecast_cninfo no longer
         # exposes per-symbol ratings/EPS forecasts), so analyst data comes from
         # yfinance (and optionally FMP) for both A-share and non-A-share tickers.
-        merged = self._yf.get_analyst_data(ticker)
+        yahoo_ticker = _yahoo_a_share_ticker(ticker) if _is_a_share_ticker(ticker) else ticker
+        merged = self._yf.get_analyst_data(yahoo_ticker)
         if self._fmp._api_key:
             fmp_recs = self._fmp.get_analyst_data(ticker)
             if fmp_recs:
@@ -237,9 +246,11 @@ class MarketDataRouter:
         return merged
 
     def get_company_info(self, ticker: str) -> CompanyInfo:
-        merged = self._yf.get_company_info(ticker)
-        if _is_a_share_ticker(ticker):
-            info_b = self._ak.get_company_info(ticker)
+        is_a_share = _is_a_share_ticker(ticker)
+        yahoo_ticker = _yahoo_a_share_ticker(ticker) if is_a_share else ticker
+        merged = self._yf.get_company_info(yahoo_ticker)
+        if is_a_share:
+            info_b = self._ak.get_company_info(_a_share_code(ticker))
             merged = _merge_company_info(merged, info_b)
         if self._fmp._api_key:
             info_c = self._fmp.get_company_info(ticker)
@@ -256,9 +267,5 @@ class MarketDataRouter:
         resp: CryptoDataResponse = self._yf.get_crypto_data(ticker, period=period)
         if resp.data:
             return resp
-        fallback: CryptoDataResponse = self._ak.get_crypto_data(
-            ticker, period=period
-        )
+        fallback: CryptoDataResponse = self._ak.get_crypto_data(ticker, period=period)
         return fallback
-
-

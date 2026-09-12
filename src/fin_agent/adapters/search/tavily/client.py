@@ -25,6 +25,10 @@ class TavilySearchClient:
                 "TavilySearchClient: no API key configured, search will return empty results"
             )
 
+    @property
+    def configured(self) -> bool:
+        return self._client is not None
+
     def search(
         self,
         query: str,

@@ -150,6 +150,7 @@ async def tool_exec(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
         json.dumps([call.tool_name, call.arguments], sort_keys=True, ensure_ascii=False)
         for call in ctx.tool_calls
     }
+    empty_rounds = 0
 
     while (
         len(ctx.tool_calls) < deps.config.max_tool_calls
@@ -193,6 +194,7 @@ async def tool_exec(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
             messages.append(resp.message)
 
         repeated_call = False
+        evidence_count = len(ctx.evidence)
         for tc in requested:
             if len(ctx.tool_calls) >= deps.config.max_tool_calls:
                 break
@@ -273,6 +275,15 @@ async def tool_exec(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
 
         if repeated_call:
             break
+        empty_rounds = empty_rounds + 1 if len(ctx.evidence) == evidence_count else 0
+        if empty_rounds >= 2:
+            ctx.trace.append(
+                TraceRecord(
+                    stage="tool-exec",
+                    detail="Stopped after two rounds without new evidence; data gaps retained",
+                )
+            )
+            break
         if legacy_call:
             messages = [
                 LLMMessage(role="system", content=system_prompt),
@@ -319,6 +330,9 @@ async def synthesize(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
         evidence_text += "\nData gaps:\n" + "\n".join(figures.gaps)
     lang_instruction = get_lang_instruction(ctx.request.lang)
     system_content = SYNTHESIZE_SYSTEM_PROMPT + "\n" + lang_instruction
+    system_content += (
+        "\nUse news headlines only for attributed event mentions, not detailed article claims."
+    )
     if ctx.skill_instructions:
         system_content = ctx.skill_instructions + "\n\n" + system_content
     messages = [
@@ -334,13 +348,32 @@ async def synthesize(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
         resp = await deps.llm.chat(messages, temperature=0.3, max_tokens=16384)
         report = resp.message.content
         if not report.strip():
-            raise ValueError("Empty model response")
+            reason = (
+                f"provider request failed ({resp.error_code})"
+                if resp.error_code
+                else "empty model response"
+            )
+            raise ValueError(reason)
     except Exception as exc:
         logger.warning("synthesize: LLM call failed (%s)", type(exc).__name__)
         timed_out = isinstance(exc, TimeoutError)
         reason = "model timed out" if timed_out else "model response unavailable"
+        if isinstance(exc, ValueError) and str(exc).startswith(
+            ("provider request failed (", "empty model response")
+        ):
+            reason = str(exc)
         if ctx.request.lang == "zh":
             detail = "模型响应超时" if timed_out else "模型未返回有效报告"
+            if "APITimeoutError" in reason:
+                detail = "模型接口超时"
+            elif "RateLimitError" in reason:
+                detail = "模型接口限流或额度不足，请检查供应商控制台"
+            elif "AuthenticationError" in reason:
+                detail = "模型 API 密钥无效或已过期"
+            elif "APIConnectionError" in reason:
+                detail = "无法连接模型接口"
+            elif "BadRequestError" in reason:
+                detail = "模型接口拒绝请求参数，请核对模型名称与协议"
             ctx.report = f"报告生成失败：{detail}。已保留收集到的资料与来源，未自动重试。"
         else:
             ctx.report = (

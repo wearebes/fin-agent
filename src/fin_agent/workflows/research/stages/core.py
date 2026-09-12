@@ -6,6 +6,8 @@ import re
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from fin_agent.adapters.search.stock_news import stock_news
+from fin_agent.domain.constants import DataFrequency, FinancialStatementType
 from fin_agent.domain.types import (
     EvidenceItem,
     FinancialsPlanItem,
@@ -74,6 +76,7 @@ async def intake(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
 
 async def plan(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
     user_content = f"Research question: {research_question(ctx.request)}"
+    user_content += f"\nCurrent date: {datetime.now(UTC).date()}"
     if ctx.request.ticker:
         user_content += f"\nTicker: {ctx.request.ticker}"
 
@@ -131,14 +134,48 @@ async def retrieve(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
         ticker = ctx.request.ticker or (plan.market_data[0].ticker if plan.market_data else None)
         if ticker and not any(m.ticker == ticker for m in plan.market_data):
             plan.market_data.append(MarketDataPlanItem(ticker=ticker))
-        if ticker and not any(f.ticker == ticker for f in plan.financials):
-            plan.financials.append(FinancialsPlanItem(ticker=ticker))
+        if ticker:
+            for statement in FinancialStatementType:
+                if not any(
+                    f.ticker == ticker
+                    and f.statement_type == statement
+                    and f.frequency == DataFrequency.YEARLY
+                    for f in plan.financials
+                ):
+                    plan.financials.append(
+                        FinancialsPlanItem(ticker=ticker, statement_type=statement)
+                    )
+            if ticker not in plan.fetch_company_info_tickers:
+                plan.fetch_company_info_tickers.append(ticker)
         ctx.metadata["captured_at"] = datetime.now(UTC).isoformat()
         ctx.metadata["report_market"] = []
         ctx.metadata["report_financials"] = []
     new_evidence: list[EvidenceItem] = []
+    if illustrated and ticker:
+        try:
+            news = await asyncio.to_thread(stock_news, ticker)
+            for item in news.results:
+                new_evidence.append(EvidenceItem(source=item.url, summary=item.text or item.title))
+            ctx.trace.append(
+                TraceRecord(
+                    stage="retrieve",
+                    detail=f"Public stock news: {len(news.results)} dated headlines",
+                )
+            )
+        except Exception as exc:
+            ctx.trace.append(
+                TraceRecord(
+                    stage="retrieve", detail=f"Public stock news unavailable ({type(exc).__name__})"
+                )
+            )
 
-    for item in plan.search_queries:
+    if plan.search_queries and not getattr(deps.search, "configured", True):
+        ctx.trace.append(
+            TraceRecord(
+                stage="retrieve", detail="News search skipped: search API key not configured"
+            )
+        )
+    for item in plan.search_queries if getattr(deps.search, "configured", True) else []:
         try:
             resp = await asyncio.to_thread(
                 deps.search.search, item.query, max_results=item.max_results
@@ -191,7 +228,8 @@ async def retrieve(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
                     ctx.metadata["report_financials"].append(fin_resp.model_dump(mode="json"))
                 new_evidence.append(
                     EvidenceItem(
-                        source=f"financials:{fin_item.ticker}:{fin_item.statement_type.value}",
+                        source=f"financials:{fin_item.ticker}:{fin_item.statement_type.value} "
+                        f"({fin_resp.source or 'provider unspecified'})",
                         summary=format_financials(fin_resp.data),
                     )
                 )

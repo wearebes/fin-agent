@@ -366,6 +366,9 @@ class LLMResponse(BaseModel):
     finish_reason: str | None = Field(
         default=None, description="Provider finish reason (stop/tool_calls/...)."
     )
+    error_code: str | None = Field(
+        default=None, description="Sanitized provider failure category."
+    )
 
     @property
     def tool_calls(self) -> list[ToolCall]:

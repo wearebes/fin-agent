@@ -166,38 +166,36 @@ def build_default_tool_registry(
     market_data: MarketDataProvider,
 ) -> ToolRegistry:
     registry = ToolRegistry()
-    registry.register(
-        ToolDefinition(
-            name="search",
-            description=(
-                "Search the web for current information relevant to the research "
-                "question."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search query string.",
+    if getattr(search, "configured", True):
+        registry.register(
+            ToolDefinition(
+                name="search",
+                description=(
+                    "Search the web for current information relevant to the research question."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query string.",
+                        },
+                        "max_results": {
+                            "type": "integer",
+                            "description": "Maximum number of results to return.",
+                            "default": 5,
+                        },
                     },
-                    "max_results": {
-                        "type": "integer",
-                        "description": "Maximum number of results to return.",
-                        "default": 5,
-                    },
+                    "required": ["query"],
                 },
-                "required": ["query"],
-            },
-        ),
-        SearchTool(search),
-        SearchInput,
-    )
+            ),
+            SearchTool(search),
+            SearchInput,
+        )
     registry.register(
         ToolDefinition(
             name="market_data",
-            description=(
-                "Fetch recent OHLCV market data (price/volume history) for a ticker."
-            ),
+            description=("Fetch recent OHLCV market data (price/volume history) for a ticker."),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -273,9 +271,7 @@ def build_default_tool_registry(
     registry.register(
         ToolDefinition(
             name="analyst",
-            description=(
-                "Fetch analyst recommendations and earnings estimates for a ticker."
-            ),
+            description=("Fetch analyst recommendations and earnings estimates for a ticker."),
             input_schema={
                 "type": "object",
                 "properties": {

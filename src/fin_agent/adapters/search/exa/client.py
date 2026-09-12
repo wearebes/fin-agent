@@ -25,6 +25,10 @@ class ExaSearchClient:
                 "ExaSearchClient: no API key configured, search will return empty results"
             )
 
+    @property
+    def configured(self) -> bool:
+        return self._exa is not None
+
     def search(
         self,
         query: str,
