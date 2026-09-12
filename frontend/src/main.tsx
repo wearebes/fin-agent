@@ -6,7 +6,6 @@ import App from './App'
 import { queryClient } from './lib/queryClient'
 import './index.css'
 import './research.css'
-import './quant.css'
 import './model-settings.css'
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(

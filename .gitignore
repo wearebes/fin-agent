@@ -13,6 +13,8 @@ dist/
 build/
 *.egg-info/
 var/
+/output/
+/tmp/
 
 # Local diagnostic artifacts
 /*_out.txt

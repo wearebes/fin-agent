@@ -1,9 +1,0 @@
-{
-  "started_at": "2026-08-31T14:25:55.783963+00:00",
-  "result": "failed",
-  "scope": "Production local Codex adapter; no API key or mock provider",
-  "turn_attempts": 1,
-  "error_type": "CodexError",
-  "detail": "Codex 超时并已停止本地进程；未重试。 / Codex timed out.",
-  "finished_at": "2026-08-31T14:27:26.014859+00:00"
-}

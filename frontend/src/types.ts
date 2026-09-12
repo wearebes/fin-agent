@@ -24,9 +24,7 @@ export interface ResearchProgress {
 export interface ResearchRequest {
   question: string
   ticker: string | null
-  // `template` is a placeholder: the backend currently IGNORES it (it always
-  // runs `open_research`). We send `agent_analysis` for parity with the legacy
-  // frontend; do not expect it to change backend behavior.
+  // Selects the report workflow, including the illustrated background report.
   template: string
   lang: Lang
   // Name of a skill explicitly picked via the composer's '/' dropdown — an

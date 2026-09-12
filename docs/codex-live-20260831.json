@@ -1,9 +1,0 @@
-{
-  "started_at": "2026-08-31T14:18:30.956413+00:00",
-  "result": "failed",
-  "scope": "Production local Codex adapter; no API key or mock provider",
-  "turn_attempts": 1,
-  "error_type": "CodexError",
-  "detail": "Codex turn/start 未成功；请检查登录或版本。 / Request rejected.",
-  "finished_at": "2026-08-31T14:18:31.252578+00:00"
-}
