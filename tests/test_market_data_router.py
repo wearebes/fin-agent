@@ -200,20 +200,28 @@ class TestGetMarketDataRouting:
             period=None,
         )
 
+    @patch("fin_agent.adapters.market_data.router.get_us_history")
     @patch("fin_agent.adapters.market_data.router.YFinanceClient")
     @patch("fin_agent.adapters.market_data.router.AKShareClient")
-    def test_non_a_share_does_not_fall_back_to_akshare(self, MockAK, MockYF):
+    def test_non_a_share_uses_independent_sina_fallback(self, MockAK, MockYF, mock_sina):
         ak_instance = MagicMock()
         yf_instance = MagicMock()
         MockAK.return_value = ak_instance
         MockYF.return_value = yf_instance
         yf_instance.get_market_data.return_value = _empty_market_resp("AAPL")
+        mock_sina.return_value = _market_resp("AAPL", "sina")
 
         router = MarketDataRouter()
         resp = router.get_market_data("AAPL", AssetType.STOCK)
 
         ak_instance.get_market_data.assert_not_called()
-        assert len(resp.data) == 0
+        assert len(resp.data) == 1
+        mock_sina.assert_called_once_with(
+            "AAPL",
+            AssetType.STOCK,
+            frequency=DataFrequency.DAILY,
+            period=None,
+        )
 
 
 class TestGetFinancialsFusion:

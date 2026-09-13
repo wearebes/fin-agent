@@ -1,6 +1,6 @@
 """API routes for evidence-first quantitative strategy audits."""
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request
 
 from fin_agent.domain.forensics import ForensicsReport, ForensicsRequest
 from fin_agent.services.forensics import NoMarketDataError
@@ -15,7 +15,7 @@ def build_forensics_router() -> APIRouter:
             return await request.app.state.container.forensics_service.diagnose(payload)
         except NoMarketDataError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                status_code=exc.status_code,
                 detail=str(exc),
             ) from exc
 

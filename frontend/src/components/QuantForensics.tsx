@@ -40,7 +40,7 @@ const copy = {
     base: '基准', checks: '策略检查', sensitivity: '参数敏感度', costs: '成本压力测试',
     regimes: '事后市场分组', aiNote: 'AI 分析摘要', ruleNote: '规则摘要',
     primary: '主要风险来源', repair: '最小修复建议', observations: '个交易日', trades: '次换仓',
-    source: '历史收盘价', error: '分析未完成', retry: '检查代码或更换标的后重试。',
+    source: '历史收盘价', error: '分析未完成', retry: '请根据上方原因处理；行情接口故障不代表股票代码错误。',
     customName: '规则名称', customSignal: '信号指标', entry: '入场阈值', exit: '离场阈值',
     customHint: {
       ma_cross: '阈值为快慢均线差（%）：高于入场值持有，低于离场值空仓。',
@@ -86,7 +86,7 @@ const copy = {
     costs: 'Cost stress', regimes: 'Retrospective regimes', aiNote: 'AI analysis brief',
     ruleNote: 'Rules summary', primary: 'Primary risk', repair: 'Minimum repair',
     observations: 'sessions', trades: 'turnover events', source: 'Historical closes',
-    error: 'Analysis did not complete', retry: 'Check the symbol or try another instrument.',
+    error: 'Analysis did not complete', retry: 'Follow the reason above. A provider failure does not mean the symbol is invalid.',
     customName: 'Rule name', customSignal: 'Signal indicator', entry: 'Entry threshold', exit: 'Exit threshold',
     customHint: {
       ma_cross: 'Thresholds are MA spread (%): hold above entry and exit below the exit value.',

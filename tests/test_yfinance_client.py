@@ -143,14 +143,16 @@ class TestGetMarketData:
         assert p.close == 101.0
         assert p.volume == 1000000
 
+    @patch("fin_agent.adapters.market_data.yfinance.client.urlopen", side_effect=OSError())
     @patch("fin_agent.adapters.market_data.yfinance.client.yf.Ticker")
-    def test_empty_history_returns_empty_response(self, mock_ticker_cls):
+    def test_empty_history_returns_empty_response(self, mock_ticker_cls, mock_urlopen):
         mock_ticker_cls.return_value = _mock_ticker(history_df=pd.DataFrame())
         client = YFinanceClient()
         resp = client.get_market_data("AAPL", AssetType.STOCK)
 
         assert isinstance(resp, MarketDataResponse)
         assert len(resp.data) == 0
+        mock_urlopen.assert_called_once()
 
     @patch(
         "fin_agent.adapters.market_data.yfinance.client.urlopen",
@@ -191,7 +193,7 @@ class TestGetMarketData:
         client = YFinanceClient()
         client.get_market_data("AAPL", AssetType.STOCK, period="6mo")
 
-        mt.history.assert_called_once_with(period="6mo", interval="1d")
+        mt.history.assert_called_once_with(period="6mo", interval="1d", timeout=15)
 
 
 class TestGetFinancials:
@@ -387,4 +389,4 @@ class TestConfigIntegration:
         client = YFinanceClient(config=config)
         client.get_market_data("AAPL", AssetType.STOCK)
 
-        mt.history.assert_called_once_with(period="3m", interval="1d")
+        mt.history.assert_called_once_with(period="3m", interval="1d", timeout=15)

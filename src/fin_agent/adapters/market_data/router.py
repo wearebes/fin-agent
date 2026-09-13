@@ -7,6 +7,7 @@ from fin_agent.adapters.market_data.akshare.client import AKShareClient
 from fin_agent.adapters.market_data.akshare.config import AKShareConfig
 from fin_agent.adapters.market_data.fmp.client import FMPClient
 from fin_agent.adapters.market_data.fmp.config import FMPConfig
+from fin_agent.adapters.market_data.sina import get_us_history
 from fin_agent.adapters.market_data.yfinance.client import YFinanceClient
 from fin_agent.adapters.market_data.yfinance.config import YFinanceConfig
 from fin_agent.domain.constants import AssetType, DataFrequency, FinancialStatementType
@@ -145,7 +146,22 @@ class MarketDataRouter:
         resp = self._yf.get_market_data(ticker, asset_type, frequency=frequency, period=period)
         if resp.data:
             return resp
-        return MarketDataResponse(ticker=ticker, asset_type=asset_type, frequency=frequency)
+        fallback = get_us_history(ticker, asset_type, frequency=frequency, period=period)
+        if fallback.data:
+            return fallback
+        failures = {resp.error_code, fallback.error_code}
+        resp.source = (
+            "Yahoo Finance / Sina Finance" if fallback.error_code != "unsupported" else resp.source
+        )
+        resp.error_code = next(
+            (
+                code
+                for code in ("invalid_data", "stale", "restricted", "unavailable")
+                if code in failures
+            ),
+            "no_data",
+        )
+        return resp
 
     def get_financials(
         self,

@@ -157,6 +157,7 @@ class MarketDataResponse(BaseModel):
     source: str | None = None
     currency: str | None = None
     price_basis: str | None = None
+    error_code: str | None = None
 
 
 class FinancialStatementRecord(BaseModel):

@@ -4,6 +4,7 @@ import json
 import logging
 from datetime import UTC, date, datetime
 from typing import Any
+from urllib.error import HTTPError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
@@ -115,13 +116,29 @@ class YFinanceClient:
         frequency: DataFrequency = DataFrequency.DAILY,
         period: str | None = None,
     ) -> MarketDataResponse:
-        empty = MarketDataResponse(ticker=ticker, asset_type=asset_type, frequency=frequency)
+        empty = MarketDataResponse(
+            ticker=ticker,
+            asset_type=asset_type,
+            frequency=frequency,
+            source="Yahoo Finance",
+            error_code="no_data",
+        )
         try:
             t = yf.Ticker(ticker)
             interval = _FREQUENCY_INTERVAL.get(frequency, "1d")
-            hist = t.history(period=period or self._config.history_period, interval=interval)
+            hist = t.history(
+                period=period or self._config.history_period,
+                interval=interval,
+                timeout=self._config.request_timeout_seconds,
+            )
             if hist is None or hist.empty:
-                return empty
+                return self._get_chart_market_data(
+                    ticker,
+                    asset_type,
+                    frequency=frequency,
+                    period=period,
+                    empty=empty,
+                )
             points: list[MarketDataPoint] = []
             for idx, row in hist.iterrows():
                 points.append(
@@ -144,7 +161,10 @@ class YFinanceClient:
                 source="Yahoo Finance (yfinance)",
                 price_basis="yfinance history auto-adjusted",
             )
-        except Exception:
+        except Exception as exc:
+            empty.error_code = (
+                "restricted" if type(exc).__name__ == "YFRateLimitError" else "unavailable"
+            )
             logger.warning(
                 "yfinance history failed for ticker=%s; trying Yahoo chart fallback",
                 ticker,
@@ -220,8 +240,20 @@ class YFinanceClient:
                 currency=result.get("meta", {}).get("currency"),
                 price_basis="Yahoo chart quote.close (not a total-return series)",
             )
+        except HTTPError as exc:
+            empty.error_code = (
+                "no_data"
+                if exc.code == 404
+                else "restricted"
+                if exc.code in (401, 403, 429)
+                else "unavailable"
+            )
+            logger.warning("Yahoo chart failed for ticker=%s HTTP=%s", ticker, exc.code)
+            return empty
         except Exception:
-            logger.exception("Yahoo chart fallback failed for ticker=%s", ticker)
+            if empty.error_code != "restricted":
+                empty.error_code = "unavailable"
+            logger.warning("Yahoo chart fallback unavailable for ticker=%s", ticker)
             return empty
 
     def get_financials(

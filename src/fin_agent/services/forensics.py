@@ -60,7 +60,9 @@ class NarrativeLLM(Protocol):
 
 
 class NoMarketDataError(ValueError):
-    pass
+    def __init__(self, message: str, *, status_code: int = 422):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def _pct(value: float) -> float:
@@ -279,15 +281,15 @@ class ForensicsService:
         self._llm = llm
 
     async def diagnose(self, request: ForensicsRequest) -> ForensicsReport:
-        asset = self._load(request.ticker, request.period)
+        asset = self._load(request.ticker, request.period, request.lang)
         benchmark = None
         if request.benchmark:
             benchmark = (
                 asset
                 if request.ticker.strip().upper() == request.benchmark.strip().upper()
-                else self._load(request.benchmark, request.period)
+                else self._load(request.benchmark, request.period, request.lang)
             )
-        dates, closes, bench_closes = self._align(asset, benchmark)
+        dates, closes, bench_closes = self._align(asset, benchmark, request.lang)
         if len(closes) < request.slow_window + 60:
             raise NoMarketDataError(
                 f"Not enough aligned history for {request.ticker}; "
@@ -414,7 +416,7 @@ class ForensicsService:
             ),
         )
 
-    def _load(self, ticker: str, period: str) -> MarketDataResponse:
+    def _load(self, ticker: str, period: str, lang: str = "en") -> MarketDataResponse:
         result = self._market_data.get_market_data(
             ticker.strip().upper(),
             AssetType.STOCK,
@@ -422,12 +424,39 @@ class ForensicsService:
             period=period,
         )
         if not result.data:
-            raise NoMarketDataError(f"No daily market data returned for {ticker}.")
+            reasons = {
+                "restricted": (
+                    "行情接口被限流或拒绝访问，备用源也未能返回可用数据。请稍后重试，这不代表代码错误。",
+                    "Market provider rate-limited or denied access; fallback also unavailable. "
+                    "This does not mean the symbol is invalid.",
+                ),
+                "unavailable": (
+                    "行情服务暂不可用或网络连接失败，请稍后重试。",
+                    "Market service unavailable or network request failed. Please retry later.",
+                ),
+                "stale": (
+                    "仅取得过期行情，已停止分析，避免把旧数据当成当前结果。",
+                    "Only stale history returned; analysis stopped instead of using old prices.",
+                ),
+                "invalid_data": (
+                    "行情或复权数据未通过校验，已停止分析。",
+                    "Market or adjustment data failed validation; analysis stopped.",
+                ),
+            }
+            if result.error_code in reasons:
+                reason = reasons[result.error_code][0 if lang == "zh" else 1]
+                raise NoMarketDataError(f"{ticker}：{reason}", status_code=503)
+            raise NoMarketDataError(
+                f"{ticker}：数据源未返回该标的或区间的日线行情；可能尚未覆盖，不能据此断定代码不存在。"
+                if lang == "zh"
+                else f"No daily market data returned for {ticker}. "
+                "The symbol or period may not be covered; this does not prove an invalid symbol."
+            )
         return result
 
     @staticmethod
     def _align(
-        asset: MarketDataResponse, benchmark: MarketDataResponse | None
+        asset: MarketDataResponse, benchmark: MarketDataResponse | None, lang: str = "en"
     ) -> tuple[list[date], list[float], list[float] | None]:
         def prices(response: MarketDataResponse) -> dict[date, float]:
             result: dict[date, float] = {}
@@ -446,9 +475,17 @@ class ForensicsService:
             dates = sorted(asset_map)
             return dates, [asset_map[d] for d in dates], None
         bench_map = prices(benchmark)
-        if set(asset_map) - set(bench_map):
+        missing = sorted(set(asset_map) - set(bench_map))
+        if missing:
+            examples = ", ".join(str(day) for day in missing[:3])
             raise NoMarketDataError(
-                "Benchmark missing asset dates; use the same market or leave it blank."
+                f"基准 {benchmark.ticker} 缺少 {len(missing)} 个标的交易日（如 {examples}）。"
+                "可能是数据源缺日或交易日历不同，已停止对比，未填造价格。"
+                "可缩短区间，或清空基准仅评估策略自身。"
+                if lang == "zh"
+                else f"Benchmark missing asset dates ({len(missing)}; e.g. {examples}). "
+                "Provider gaps or different calendars; no prices fabricated. "
+                "Shorten the period or omit the benchmark."
             )
         dates = sorted(asset_map)
         return dates, [asset_map[d] for d in dates], [bench_map[d] for d in dates]
