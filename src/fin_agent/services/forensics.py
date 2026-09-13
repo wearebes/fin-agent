@@ -30,6 +30,8 @@ from fin_agent.domain.forensics import (
     RegimeResult,
     SensitivityPoint,
     StrategyKind,
+    ValidationFold,
+    WalkForwardResult,
 )
 from fin_agent.domain.types import LLMMessage, LLMResponse, MarketDataResponse
 
@@ -113,16 +115,6 @@ def _moving_average(values: Sequence[float], end: int, window: int) -> float | N
     return _safe_mean(values[start:end])
 
 
-def _ema(values: Sequence[float]) -> float:
-    if not values:
-        return 0.0
-    alpha = 2 / (len(values) + 1)
-    value = values[0]
-    for item in values[1:]:
-        value = alpha * item + (1 - alpha) * value
-    return value
-
-
 def _rsi(values: Sequence[float], end: int, window: int) -> float | None:
     start = end - window - 1
     if start < 0:
@@ -132,7 +124,7 @@ def _rsi(values: Sequence[float], end: int, window: int) -> float | None:
     losses = [max(0.0, -change) for change in changes]
     average_loss = _safe_mean(losses)
     if average_loss == 0:
-        return 100.0
+        return 50.0 if _safe_mean(gains) == 0 else 100.0
     relative_strength = _safe_mean(gains) / average_loss
     return 100 - 100 / (1 + relative_strength)
 
@@ -153,12 +145,11 @@ def _signals(
     custom_signal: CustomSignalKind = CustomSignalKind.MA_CROSS,
     entry_threshold: float = 0.2,
     exit_threshold: float = 0.0,
-    lagged: bool = True,
 ) -> list[float]:
     result = [0.0] * len(closes)
     held = 0.0
     for i in range(1, len(closes)):
-        end = i if lagged else i + 1
+        end = i
         fast_ma = _moving_average(closes, end, fast)
         slow_ma = _moving_average(closes, end, slow)
         if fast_ma is None or slow_ma is None:
@@ -236,7 +227,6 @@ def _signals_for_request(
     *,
     fast: int | None = None,
     slow: int | None = None,
-    lagged: bool = True,
 ) -> list[float]:
     return _signals(
         closes,
@@ -246,7 +236,6 @@ def _signals_for_request(
         custom_signal=request.custom_signal,
         entry_threshold=request.entry_threshold,
         exit_threshold=request.exit_threshold,
-        lagged=lagged,
     )
 
 
@@ -261,32 +250,27 @@ def _strategy_returns(
         turnover = abs(signals[i] - signals[i - 1])
         if turnover:
             trades += 1
-        returns[i] = signals[i] * raw - turnover * cost
+        # Signals[i] uses data through i-1, executes at close i, earns from i+1.
+        returns[i] = (1 + signals[i - 1] * raw) * (1 - turnover * cost) - 1
     return returns, trades
 
 
-def _beta_alpha(strategy: Sequence[float], benchmark: Sequence[float]) -> tuple[float, float]:
+def _beta_alpha(
+    strategy: Sequence[float], benchmark: Sequence[float]
+) -> tuple[float | None, float | None]:
     if len(strategy) < 3 or len(strategy) != len(benchmark):
-        return 0.0, 0.0
+        return None, None
     bench_mean = _safe_mean(benchmark)
     strat_mean = _safe_mean(strategy)
     variance = sum((x - bench_mean) ** 2 for x in benchmark) / (len(benchmark) - 1)
     if variance == 0:
-        return 0.0, strat_mean * 252
+        return None, None
     covariance = sum(
         (x - bench_mean) * (y - strat_mean) for x, y in zip(benchmark, strategy, strict=True)
     ) / (len(benchmark) - 1)
     beta = covariance / variance
     alpha = (strat_mean - beta * bench_mean) * 252
     return beta, alpha
-
-
-def _status(score: int, *, warning_at: int = 60) -> AuditStatus:
-    if score >= 75:
-        return AuditStatus.PASS
-    if score >= warning_at:
-        return AuditStatus.WARNING
-    return AuditStatus.FAIL
 
 
 class ForensicsService:
@@ -312,18 +296,21 @@ class ForensicsService:
 
         signals = _signals_for_request(closes, request)
         strategy_returns, trades = _strategy_returns(closes, signals, request.transaction_cost_bps)
+        validation = self._walk_forward(request, dates, closes)
         asset_returns = [0.0] + [closes[i] / closes[i - 1] - 1.0 for i in range(1, len(closes))]
         benchmark_returns = (
-            [0.0] + [
-                bench_closes[i] / bench_closes[i - 1] - 1.0 for i in range(1, len(bench_closes))
-            ]
+            [0.0]
+            + [bench_closes[i] / bench_closes[i - 1] - 1.0 for i in range(1, len(bench_closes))]
             if bench_closes is not None
             else None
         )
 
         sensitivity = self._sensitivity(request, closes)
         costs = self._cost_scenarios(request, closes, signals)
-        regimes = self._regime_results(strategy_returns, benchmark_returns or asset_returns)
+        start = request.slow_window
+        regimes = self._regime_results(
+            strategy_returns[start:], (benchmark_returns or asset_returns)[start:]
+        )
         checks = self._checks(
             request,
             closes,
@@ -332,13 +319,25 @@ class ForensicsService:
             sensitivity,
             costs,
             regimes,
+            validation,
         )
-        reliability = round(_safe_mean([float(check.score) for check in checks]))
-        verdict = self._verdict(reliability, request.lang)
-        metrics = self._metrics(strategy_returns, benchmark_returns, trades)
-        narrative = self._fallback_narrative(checks, reliability, request.lang)
+        verdict = (
+            "需核验；不构成可靠性评级" if request.lang == "zh" else "Unrated; verification required"
+        )
+        # Exclude indicator warm-up and the synthetic baseline from risk statistics.
+        metrics = self._metrics(
+            strategy_returns[start:],
+            benchmark_returns[start:] if benchmark_returns is not None else None,
+            trades,
+        )
+        narrative = self._fallback_narrative(checks, request.lang)
         narrative = await self._ai_narrative(request, metrics, checks, narrative)
 
+        dates = dates[start - 1 :]
+        strategy_returns = [0.0, *strategy_returns[start:]]
+        benchmark_returns = (
+            [0.0, *benchmark_returns[start:]] if benchmark_returns is not None else None
+        )
         strategy_equity = _equity(strategy_returns)
         benchmark_equity = _equity(benchmark_returns) if benchmark_returns is not None else None
         stride = max(1, math.ceil(len(dates) / 160))
@@ -371,8 +370,7 @@ class ForensicsService:
             strategy_label=self._strategy_label(request),
             data_start=dates[0],
             data_end=dates[-1],
-            observation_count=len(dates),
-            reliability_score=reliability,
+            observation_count=len(dates) - 1,
             verdict=verdict,
             metrics=metrics,
             benchmark_return_pct=(
@@ -384,6 +382,29 @@ class ForensicsService:
             regimes=regimes,
             equity_curve=curve,
             narrative=narrative,
+            validation=validation,
+            methodology=[
+                f"Source: {asset.source or 'unspecified'}; "
+                f"price basis: {asset.price_basis or 'unspecified'}; "
+                f"benchmark: {benchmark.source if benchmark else 'none'}; "
+                f"benchmark price basis: {benchmark.price_basis if benchmark else 'none'}.",
+                "信号使用前日及以前数据，在下一交易日收盘成交；新仓位从成交后计收益。"
+                if request.lang == "zh"
+                else "Prior-close signals execute at next close; exposure earns thereafter.",
+                "预热期不计入绩效；夏普/Alpha 无风险利率假设为 0，年化按 252 个交易日。"
+                "盈利日占比按非零收益日计算；换仓次数不是完整买卖笔数。"
+                if request.lang == "zh"
+                else "Warm-up excluded; rf=0; annualization uses 252 sessions/year. "
+                "Win rate counts nonzero return days; turnover events are not round trips.",
+                "成本按换仓扣除；主回测期末按市值计价，未平仓不扣假想卖出费。"
+                "未模拟停牌、涨跌停、整手、成交量限制和冲击成本；未验证历史财报可知时间。"
+                if request.lang == "zh"
+                else "Turnover costs; terminal holdings marked, not liquidated. "
+                "No suspension, price-limit, lot-size, liquidity, impact or filing-time model.",
+                "市场状态为事后分组，不可作为实时信号；RSI 采用窗口简单平均涨跌幅。"
+                if request.lang == "zh"
+                else "Retrospective regimes; RSI uses simple window averages.",
+            ],
             disclaimer=(
                 "仅供研究与教学使用；结果基于历史收盘价和简化成交假设，"
                 "不构成投资建议或未来收益保证。"
@@ -408,12 +429,28 @@ class ForensicsService:
     def _align(
         asset: MarketDataResponse, benchmark: MarketDataResponse | None
     ) -> tuple[list[date], list[float], list[float] | None]:
-        asset_map = {point.trade_date: point.close for point in asset.data if point.close > 0}
+        def prices(response: MarketDataResponse) -> dict[date, float]:
+            result: dict[date, float] = {}
+            for point in response.data:
+                if not math.isfinite(point.close) or point.close <= 0:
+                    raise NoMarketDataError("History contains invalid closing prices.")
+                if point.trade_date in result and result[point.trade_date] != point.close:
+                    raise NoMarketDataError(
+                        "History contains conflicting prices for the same date."
+                    )
+                result[point.trade_date] = point.close
+            return result
+
+        asset_map = prices(asset)
         if benchmark is None:
             dates = sorted(asset_map)
             return dates, [asset_map[d] for d in dates], None
-        bench_map = {point.trade_date: point.close for point in benchmark.data if point.close > 0}
-        dates = sorted(set(asset_map) & set(bench_map))
+        bench_map = prices(benchmark)
+        if set(asset_map) - set(bench_map):
+            raise NoMarketDataError(
+                "Benchmark missing asset dates; use the same market or leave it blank."
+            )
+        dates = sorted(asset_map)
         return dates, [asset_map[d] for d in dates], [bench_map[d] for d in dates]
 
     @staticmethod
@@ -421,7 +458,11 @@ class ForensicsService:
         strategy: Sequence[float], benchmark: Sequence[float] | None, trades: int
     ) -> PerformanceMetrics:
         volatility = _std(strategy) * math.sqrt(252)
-        sharpe = 0.0 if volatility == 0 else _safe_mean(strategy) * 252 / volatility
+        sharpe = None if volatility == 0 else _safe_mean(strategy) * 252 / volatility
+        downside = math.sqrt(_safe_mean([min(r, 0) ** 2 for r in strategy]) * 252)
+        sortino = _safe_mean(strategy) * 252 / downside if downside else None
+        drawdown = _max_drawdown(strategy)
+        calmar = _annualized(strategy) / abs(drawdown) if drawdown else None
         active_days = [item for item in strategy if item != 0]
         wins = sum(1 for item in active_days if item > 0)
         beta, alpha = _beta_alpha(strategy, benchmark) if benchmark is not None else (None, None)
@@ -429,9 +470,11 @@ class ForensicsService:
             total_return_pct=_pct(_compound(strategy)),
             annualized_return_pct=_pct(_annualized(strategy)),
             annualized_volatility_pct=_pct(volatility),
-            sharpe_ratio=round(sharpe, 2),
-            max_drawdown_pct=_pct(_max_drawdown(strategy)),
-            win_rate_pct=round(100 * wins / len(active_days), 2) if active_days else 0.0,
+            sharpe_ratio=round(sharpe, 2) if sharpe is not None else None,
+            sortino_ratio=round(sortino, 2) if sortino is not None else None,
+            calmar_ratio=round(calmar, 2) if calmar is not None else None,
+            max_drawdown_pct=_pct(drawdown),
+            win_rate_pct=round(100 * wins / len(active_days), 2) if active_days else None,
             trade_count=trades,
             beta=round(beta, 2) if beta is not None else None,
             alpha_pct=_pct(alpha) if alpha is not None else None,
@@ -497,6 +540,83 @@ class ForensicsService:
             for name, values in buckets.items()
         ]
 
+    @staticmethod
+    def _walk_forward(
+        request: ForensicsRequest, dates: Sequence[date], closes: Sequence[float]
+    ) -> WalkForwardResult:
+        """Expanding training only; each following block is flat-start, net of liquidation."""
+        note = (
+            "五组窗口仅在各折训练段选优，随后在未参与本折选参的区间测试；"
+            "每折从空仓开始并扣期末平仓费。属于内部滚动留出，不是外部独立验证；"
+            "若已看过全部历史来选择策略或阈值，仍有选择偏差。"
+            if request.lang == "zh"
+            else "Five window pairs selected on expanding training data only; each following block "
+            "starts flat and includes terminal liquidation costs. Internal holdout, not external "
+            "validation; prior full-history strategy/threshold selection still introduces bias."
+        )
+        candidates = sorted(
+            {
+                (
+                    max(3, round(request.fast_window * r)),
+                    max(max(3, round(request.fast_window * r)) + 5, round(request.slow_window * r)),
+                )
+                for r in (0.8, 0.9, 1.0, 1.1, 1.2)
+            }
+        )
+        warmup = max(slow for _, slow in candidates)
+        split = max(warmup + 40, int(len(closes) * 0.6))
+        if len(closes) - split < 60:
+            return WalkForwardResult(
+                note=note
+                + (
+                    " 历史不足：至少需要三个 20 日留出区间。"
+                    if request.lang == "zh"
+                    else " Insufficient history for three 20-session blocks."
+                )
+            )
+        folds, all_returns = [], []
+        edges = [split + (len(closes) - split) * i // 3 for i in range(4)]
+        for start, stop in zip(edges, edges[1:], strict=False):
+
+            def training_return(pair: tuple[int, int], train_end: int = start) -> float:
+                signals = _signals_for_request(
+                    closes[:train_end], request, fast=pair[0], slow=pair[1]
+                )
+                # Same evaluation start for every candidate.
+                signals[:warmup] = [0.0] * warmup
+                signals[-1] = 0.0
+                returns, _ = _strategy_returns(
+                    closes[:train_end], signals, request.transaction_cost_bps
+                )
+                return _compound(returns[warmup:])
+
+            fast, slow = max(candidates, key=training_return)
+            signals = _signals_for_request(closes[:stop], request, fast=fast, slow=slow)
+            signals[:start] = [0.0] * start
+            signals[-1] = 0.0
+            returns, trades = _strategy_returns(
+                closes[:stop], signals, request.transaction_cost_bps
+            )
+            returns = returns[start:]
+            all_returns.extend(returns)
+            folds.append(
+                ValidationFold(
+                    train_end=dates[start - 1],
+                    test_start=dates[start],
+                    test_end=dates[stop - 1],
+                    fast_window=fast,
+                    slow_window=slow,
+                    total_return_pct=_pct(_compound(returns)),
+                    max_drawdown_pct=_pct(_max_drawdown(returns)),
+                    trade_count=trades,
+                )
+            )
+        return WalkForwardResult(
+            folds=folds,
+            total_return_pct=_pct(_compound(all_returns)),
+            note=note,
+        )
+
     def _checks(
         self,
         request: ForensicsRequest,
@@ -506,188 +626,105 @@ class ForensicsService:
         sensitivity: Sequence[SensitivityPoint],
         costs: Sequence[CostScenario],
         regimes: Sequence[RegimeResult],
+        validation: WalkForwardResult,
     ) -> list[AuditCheck]:
-        lang = request.lang
-        leaky_signals = _signals_for_request(closes, request, lagged=False)
-        leaky_returns, _ = _strategy_returns(closes, leaky_signals, request.transaction_cost_bps)
-        leakage_uplift = _pct(_compound(leaky_returns) - _compound(strategy))
-        leakage_score = max(70, round(96 - max(0.0, leakage_uplift) * 0.4))
+        def text(zh: str, en: str) -> str:
+            return zh if request.lang == "zh" else en
 
-        sensitivity_returns = [point.total_return_pct for point in sensitivity]
-        base_abs = max(5.0, abs(sensitivity_returns[2]))
-        sensitivity_dispersion = _std(sensitivity_returns) / base_abs
-        sensitivity_score = max(0, min(100, round(100 - sensitivity_dispersion * 95)))
-
-        fold_size = len(strategy) // 3
-        folds = [_pct(_compound(strategy[i * fold_size : (i + 1) * fold_size])) for i in range(3)]
-        positive_folds = sum(1 for value in folds if value > 0)
-        overfit_score = max(0, min(100, 25 + positive_folds * 22 - round(_std(folds) * 0.35)))
-
-        zero_cost = next(item.total_return_pct for item in costs if item.cost_bps == 0)
-        worst_cost = costs[-1].total_return_pct
-        cost_drag = zero_cost - worst_cost
-        cost_score = max(0, min(100, round(100 - max(0.0, cost_drag) * 2.2)))
-
-        regime_returns = [item.annualized_return_pct for item in regimes if item.trading_days >= 10]
-        regime_score = (
-            50
-            if not regime_returns
-            else max(
-                0,
-                min(
-                    100,
-                    round(
-                        75
-                        + sum(1 for value in regime_returns if value > 0) * 8
-                        - _std(regime_returns) * 0.45
-                    ),
-                ),
-            )
-        )
-
-        beta, alpha = _beta_alpha(strategy, benchmark) if benchmark is not None else (None, None)
-        attribution_score = (
-            max(0, min(100, round(78 - abs(beta) * 22 + max(-15, min(20, alpha * 100)))))
-            if beta is not None and alpha is not None
-            else None
-        )
-
-        if lang == "zh":
-            checks = [
-                AuditCheck(
-                    key="leakage",
-                    title="未来数据泄漏",
-                    status=_status(leakage_score),
-                    score=leakage_score,
-                    finding="信号已强制滞后一日，未发现直接偷看未来价格。",
-                    evidence=f"若错误使用当日价格，累计收益将变化 {leakage_uplift:+.2f} 个百分点。",
-                ),
-                AuditCheck(
-                    key="overfit",
-                    title="时间分段稳定性",
-                    status=_status(overfit_score),
-                    score=overfit_score,
-                    finding=f"三个时间分段中有 {positive_folds}/3 个获得正收益。",
-                    evidence="各段累计收益：" + " / ".join(f"{value:+.1f}%" for value in folds),
-                ),
-                AuditCheck(
-                    key="sensitivity",
-                    title="参数脆弱性",
-                    status=_status(sensitivity_score),
-                    score=sensitivity_score,
-                    finding="检测参数上下浮动 10%–20% 后的收益稳定性。",
-                    evidence=f"五组参数收益离散度为 {_std(sensitivity_returns):.2f} 个百分点。",
-                ),
-                AuditCheck(
-                    key="cost",
-                    title="交易成本悬崖",
-                    status=_status(cost_score),
-                    score=cost_score,
-                    finding="比较零成本、设定成本、双倍成本与 25bps 压力情景。",
-                    evidence=f"零成本至最严压力情景拖累 {cost_drag:.2f} 个百分点。",
-                ),
-                AuditCheck(
-                    key="regime",
-                    title="市场状态依赖",
-                    status=_status(regime_score),
-                    score=regime_score,
-                    finding="分别检查上涨、下跌和高波动时期的策略表现。",
-                    evidence=" / ".join(
-                        f"{item.regime}: {item.annualized_return_pct:+.1f}%" for item in regimes
-                    ),
-                ),
-            ]
-            if attribution_score is not None and beta is not None and alpha is not None:
-                checks.append(
-                    AuditCheck(
-                        key="attribution",
-                        title="Alpha 归因",
-                        status=_status(attribution_score),
-                        score=attribution_score,
-                        finding="剥离基准方向暴露后检查剩余收益。",
-                        evidence=f"估算 Beta {beta:.2f}，年化 Alpha {_pct(alpha):+.2f}%。",
-                    )
-                )
-            return checks
+        # Report observations, not hand-tuned probabilities or investability ratings.
+        signals = _signals_for_request(closes, request)
+        prefix = len(closes) // 2
+        stable = signals[:prefix] == _signals_for_request(closes[:prefix], request)
         checks = [
             AuditCheck(
                 key="leakage",
-                title="Look-ahead leakage",
-                status=_status(leakage_score),
-                score=leakage_score,
-                finding=(
-                    "Signals are lagged by one session; no direct future-price access was found."
+                title=text("信号时序", "Signal timing"),
+                status=AuditStatus.PASS if stable else AuditStatus.FAIL,
+                finding=text(
+                    "截断未来数据后，既有信号保持一致。" if stable else "信号时序检查失败。",
+                    "Prefix signals unchanged." if stable else "Prefix test failed.",
                 ),
-                evidence=(
-                    "Using same-day prices incorrectly would change return by "
-                    f"{leakage_uplift:+.2f} points."
+                evidence=text(
+                    "仅验证价格信号前缀不变性，不证明所有数据不存在前视偏差。",
+                    "Price-prefix invariance only; not proof of all-data leakage safety.",
                 ),
             ),
             AuditCheck(
                 key="overfit",
-                title="Chronological stability",
-                status=_status(overfit_score),
-                score=overfit_score,
-                finding=f"{positive_folds}/3 chronological folds produced positive returns.",
-                evidence="Fold returns: " + " / ".join(f"{value:+.1f}%" for value in folds),
+                title=text("滚动留出验证", "Walk-forward holdout"),
+                status=AuditStatus.WARNING,
+                finding=text(
+                    f"完成 {len(validation.folds)} 折；留出累计收益 "
+                    + (
+                        f"{validation.total_return_pct:+.2f}%。"
+                        if validation.total_return_pct is not None
+                        else "不可用。"
+                    ),
+                    f"{len(validation.folds)} folds; net return: {validation.total_return_pct}%.",
+                ),
+                evidence=validation.note,
             ),
             AuditCheck(
                 key="sensitivity",
-                title="Parameter fragility",
-                status=_status(sensitivity_score),
-                score=sensitivity_score,
-                finding="Tests 10%–20% perturbations around both strategy windows.",
-                evidence=f"Return dispersion is {_std(sensitivity_returns):.2f} percentage points.",
+                title=text("参数敏感度", "Parameter sensitivity"),
+                status=AuditStatus.WARNING,
+                finding=text(
+                    "同时扰动两个窗口；不覆盖全部阈值或策略选择。",
+                    "Both windows perturbed; thresholds/strategy selection not covered.",
+                ),
+                evidence=text("五组参数累计收益：", "Five candidate returns: ")
+                + " / ".join(f"{p.total_return_pct:+.2f}%" for p in sensitivity),
             ),
             AuditCheck(
                 key="cost",
-                title="Cost cliff",
-                status=_status(cost_score),
-                score=cost_score,
-                finding="Compares zero, configured, double, and 25bps execution costs.",
-                evidence=f"Stress-cost drag is {cost_drag:.2f} percentage points.",
+                title=text("成本压力", "Cost stress"),
+                status=AuditStatus.WARNING,
+                finding=text(
+                    "简化换仓成本测试，不能代表真实可成交性。",
+                    "Turnover cost stress, not proof of executable returns.",
+                ),
+                evidence=" / ".join(
+                    f"{p.cost_bps:g}bps: {p.total_return_pct:+.2f}%" for p in costs
+                ),
             ),
             AuditCheck(
                 key="regime",
-                title="Regime dependence",
-                status=_status(regime_score),
-                score=regime_score,
-                finding="Separates bull, bear, and high-volatility sessions.",
+                title=text("事后市场分组", "Retrospective regimes"),
+                status=AuditStatus.WARNING,
+                finding=text(
+                    "分组收益用于描述，短样本年化不代表全年可实现收益。",
+                    "Descriptive groups; short-group annualization is not a forecast.",
+                ),
                 evidence=" / ".join(
-                    f"{item.regime}: {item.annualized_return_pct:+.1f}%" for item in regimes
+                    f"{p.regime}: {p.trading_days}d, {p.annualized_return_pct:+.2f}%"
+                    for p in regimes
                 ),
             ),
         ]
-        if attribution_score is not None and beta is not None and alpha is not None:
+        if benchmark is not None:
+            beta, alpha = _beta_alpha(
+                strategy[request.slow_window :], benchmark[request.slow_window :]
+            )
             checks.append(
                 AuditCheck(
                     key="attribution",
-                    title="Alpha attribution",
-                    status=_status(attribution_score),
-                    score=attribution_score,
-                    finding="Estimates residual return after benchmark direction exposure.",
-                    evidence=f"Estimated beta {beta:.2f}; annualized alpha {_pct(alpha):+.2f}%.",
+                    title=text("单基准归因", "Single-benchmark attribution"),
+                    status=AuditStatus.WARNING,
+                    finding=text(
+                        "描述性回归，未检验统计显著性；不等于已发现超额收益能力。",
+                        "Descriptive regression without significance testing; not proven skill.",
+                    ),
+                    evidence=(
+                        f"Beta {beta:.2f}; alpha {_pct(alpha):+.2f}%/year; rf=0."
+                        if beta is not None and alpha is not None
+                        else text(
+                            "基准方差为零或样本不足，无法估计。",
+                            "Zero benchmark variance or insufficient observations.",
+                        )
+                    ),
                 )
             )
         return checks
-
-    @staticmethod
-    def _verdict(score: int, lang: str) -> str:
-        if lang == "zh":
-            return (
-                "可继续研究"
-                if score >= 75
-                else "存在明显脆弱性"
-                if score >= 55
-                else "不建议进入模拟盘"
-            )
-        return (
-            "Researchable"
-            if score >= 75
-            else "Materially fragile"
-            if score >= 55
-            else "Do not paper-trade yet"
-        )
 
     @staticmethod
     def _strategy_label(request: ForensicsRequest) -> str:
@@ -705,28 +742,17 @@ class ForensicsService:
         return labels[request.strategy][0 if request.lang == "zh" else 1]
 
     @staticmethod
-    def _fallback_narrative(
-        checks: Sequence[AuditCheck], score: int, lang: str
-    ) -> ForensicsNarrative:
-        weakest = min(checks, key=lambda item: item.score)
+    def _fallback_narrative(checks: Sequence[AuditCheck], lang: str) -> ForensicsNarrative:
         if lang == "zh":
             return ForensicsNarrative(
-                summary=(
-                    f"该策略可信度为 {score}/100，当前结论："
-                    f"{ForensicsService._verdict(score, lang)}。"
-                ),
-                primary_cause=f"最薄弱环节是“{weakest.title}”（{weakest.score}/100）。",
-                repair_action="先只修复这一项，再以完全相同的数据切分重新审计，避免同时调整多个参数。",
+                summary="已生成可复核的历史评估，不提供未经校准的可信度评分。",
+                primary_cause=next(check.finding for check in checks if check.key == "overfit"),
+                repair_action="优先核对留出区间、真实成交约束和数据口径；不要只按历史收益选策略。",
             )
         return ForensicsNarrative(
-            summary=(
-                f"Reliability is {score}/100. Verdict: {ForensicsService._verdict(score, lang)}."
-            ),
-            primary_cause=f"The weakest dimension is {weakest.title} ({weakest.score}/100).",
-            repair_action=(
-                "Repair only this issue, then rerun the same locked audit before "
-                "changing anything else."
-            ),
+            summary="Reproducible historical diagnostics; no uncalibrated confidence score.",
+            primary_cause=next(check.finding for check in checks if check.key == "overfit"),
+            repair_action="Review holdouts, execution constraints and price basis.",
         )
 
     async def _ai_narrative(

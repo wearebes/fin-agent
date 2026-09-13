@@ -37,9 +37,7 @@ class FMPClient:
     def __init__(self, config: FMPConfig | None = None) -> None:
         self._config = config or FMPConfig()
         self._api_key = (
-            self._config.api_key.get_secret_value()
-            if self._config.api_key is not None
-            else None
+            self._config.api_key.get_secret_value() if self._config.api_key is not None else None
         )
         if not self._api_key:
             logger.debug("FMPClient: no API key configured, skipping FMP (optional data source)")
@@ -158,6 +156,8 @@ class FMPClient:
                     ticker=ticker,
                     statement_type=statement_type,
                     fiscal_year=fiscal_year,
+                    period_end=_optional_date(item.get("date")),
+                    published_at=_optional_date(item.get("fillingDate") or item.get("filingDate")),
                     fiscal_quarter=fiscal_quarter,
                     total_revenue=_safe_float(item.get("revenue")),
                     net_income=_safe_float(item.get("netIncome")),
@@ -169,7 +169,15 @@ class FMPClient:
                 )
             )
         return FinancialStatementResponse(
-            ticker=ticker, statement_type=statement_type, data=records
+            ticker=ticker,
+            statement_type=statement_type,
+            data=records,
+            source="Financial Modeling Prep financial statements",
+            currency=(
+                data[0].get("reportedCurrency")
+                if len({r.get("reportedCurrency") for r in data[:8]}) == 1
+                else None
+            ),
         )
 
     def get_company_info(self, ticker: str) -> CompanyInfo | None:
@@ -224,6 +232,13 @@ def _period_days(period: str) -> int:
     return mapping.get(period, 365)
 
 
+def _optional_date(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
 def _safe_float(v: Any) -> float | None:
     if v is None:
         return None
@@ -242,9 +257,7 @@ def _parse_date(date_str: Any) -> date | None:
         return None
 
 
-def _fiscal_year_quarter(
-    date_str: Any, quarterly: bool
-) -> tuple[int | None, int | None]:
+def _fiscal_year_quarter(date_str: Any, quarterly: bool) -> tuple[int | None, int | None]:
     d = _parse_date(date_str)
     if d is None:
         return None, None

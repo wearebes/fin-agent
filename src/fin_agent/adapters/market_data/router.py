@@ -14,7 +14,6 @@ from fin_agent.domain.types import (
     AnalystResponse,
     CompanyInfo,
     CryptoDataResponse,
-    FinancialStatementRecord,
     FinancialStatementResponse,
     MarketDataResponse,
 )
@@ -98,54 +97,6 @@ def _merge_analyst_response(a: AnalystResponse, b: AnalystResponse) -> AnalystRe
     )
 
 
-def _merge_records_by_year(
-    a: list[FinancialStatementRecord], b: list[FinancialStatementRecord]
-) -> list[FinancialStatementRecord]:
-    b_map: dict[tuple[int, int | None], FinancialStatementRecord] = {}
-    for r in b:
-        key = (r.fiscal_year, r.fiscal_quarter)
-        b_map[key] = r
-    merged: list[FinancialStatementRecord] = []
-    for r in a:
-        key = (r.fiscal_year, r.fiscal_quarter)
-        other = b_map.pop(key, None)
-        if other is None:
-            merged.append(r)
-            continue
-        merged.append(
-            FinancialStatementRecord(
-                ticker=r.ticker,
-                statement_type=r.statement_type,
-                fiscal_year=r.fiscal_year,
-                fiscal_quarter=_first_non_none(r.fiscal_quarter, other.fiscal_quarter),
-                revenue_yoy=_first_non_none(r.revenue_yoy, other.revenue_yoy),
-                net_profit_margin=_first_non_none(r.net_profit_margin, other.net_profit_margin),
-                premium_income=_first_non_none(r.premium_income, other.premium_income),
-                inventory_turnover_days=_first_non_none(
-                    r.inventory_turnover_days, other.inventory_turnover_days
-                ),
-                total_revenue=_first_non_none(r.total_revenue, other.total_revenue),
-                net_income=_first_non_none(r.net_income, other.net_income),
-                total_assets=_first_non_none(r.total_assets, other.total_assets),
-                total_liabilities=_first_non_none(r.total_liabilities, other.total_liabilities),
-                total_equity=_first_non_none(r.total_equity, other.total_equity),
-                operating_cash_flow=_first_non_none(
-                    r.operating_cash_flow, other.operating_cash_flow
-                ),
-                free_cash_flow=_first_non_none(r.free_cash_flow, other.free_cash_flow),
-                net_operating_cash_flow=_first_non_none(
-                    r.net_operating_cash_flow, other.net_operating_cash_flow
-                ),
-                solvency_adequacy_ratio=_first_non_none(
-                    r.solvency_adequacy_ratio, other.solvency_adequacy_ratio
-                ),
-            )
-        )
-    for r in b_map.values():
-        merged.append(r)
-    return merged
-
-
 class MarketDataRouter:
     def __init__(
         self,
@@ -203,34 +154,32 @@ class MarketDataRouter:
         *,
         frequency: DataFrequency = DataFrequency.YEARLY,
     ) -> FinancialStatementResponse:
+        # Financial arithmetic must never combine individual fields across providers.
         is_a_share = _is_a_share_ticker(ticker)
-        yahoo_ticker = _yahoo_a_share_ticker(ticker) if is_a_share else ticker
-        resp_a = self._yf.get_financials(yahoo_ticker, statement_type, frequency=frequency)
-        merged_data = resp_a.data
-        sources = ["Yahoo Finance"] if merged_data else []
+        providers = []
         if is_a_share:
-            resp_b = self._ak.get_financials(
-                _a_share_code(ticker), statement_type, frequency=frequency
-            )
-            # Mainland interim cash flows/income are YTD; Yahoo quarters are standalone.
-            # Never combine the two bases into one apparently comparable record.
-            if resp_b.data and frequency == DataFrequency.QUARTERLY:
-                return resp_b.model_copy(update={"ticker": ticker})
-            if resp_b.data:
-                sources.append(resp_b.source or "AKShare")
-            merged_data = _merge_records_by_year(merged_data, resp_b.data)
-        if self._fmp._api_key:
-            resp_c = self._fmp.get_financials(ticker, statement_type, frequency=frequency)
-            if resp_c.data:
-                sources.append("Financial Modeling Prep")
-            merged_data = _merge_records_by_year(merged_data, resp_c.data)
-        return FinancialStatementResponse(
-            ticker=ticker,
-            statement_type=statement_type,
-            data=merged_data,
-            source=" / ".join(sources) or None,
-            currency="CNY" if is_a_share else resp_a.currency,
+            providers.append((self._ak, _a_share_code(ticker), "AKShare"))
+        providers.append(
+            (self._yf, _yahoo_a_share_ticker(ticker) if is_a_share else ticker, "Yahoo Finance")
         )
+        if self._fmp._api_key:
+            providers.append((self._fmp, ticker, "Financial Modeling Prep"))
+        for provider, symbol, source in providers:
+            try:
+                response = provider.get_financials(symbol, statement_type, frequency=frequency)
+                if response.data:
+                    return response.model_copy(
+                        update={
+                            "ticker": ticker,
+                            "source": response.source or source,
+                            "data": [
+                                r.model_copy(update={"ticker": ticker}) for r in response.data
+                            ],
+                        }
+                    )
+            except Exception:
+                logger.warning("Financial source unavailable: %s", source)
+        return FinancialStatementResponse(ticker=ticker, statement_type=statement_type)
 
     def get_analyst_data(self, ticker: str) -> AnalystResponse:
         # AKShare analyst data is disabled (stock_rank_forecast_cninfo no longer

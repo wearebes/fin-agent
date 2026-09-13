@@ -147,9 +147,9 @@ async def retrieve(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
                     )
             if ticker not in plan.fetch_company_info_tickers:
                 plan.fetch_company_info_tickers.append(ticker)
-        ctx.metadata["captured_at"] = datetime.now(UTC).isoformat()
-        ctx.metadata["report_market"] = []
-        ctx.metadata["report_financials"] = []
+    ctx.metadata["captured_at"] = datetime.now(UTC).isoformat()
+    ctx.metadata["report_market"] = []
+    ctx.metadata["report_financials"] = []
     new_evidence: list[EvidenceItem] = []
     if illustrated and ticker:
         try:
@@ -200,8 +200,7 @@ async def retrieve(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
                 period=md_item.period,
             )
             if md_resp.data:
-                if illustrated:
-                    ctx.metadata["report_market"].append(md_resp.model_dump(mode="json"))
+                ctx.metadata["report_market"].append(md_resp.model_dump(mode="json"))
                 latest = max(md_resp.data, key=lambda row: row.trade_date)
                 new_evidence.append(
                     EvidenceItem(
@@ -224,13 +223,12 @@ async def retrieve(ctx: ResearchContext, deps: StageDeps) -> ResearchContext:
                 frequency=fin_item.frequency,
             )
             if fin_resp.data:
-                if illustrated:
-                    ctx.metadata["report_financials"].append(fin_resp.model_dump(mode="json"))
+                ctx.metadata["report_financials"].append(fin_resp.model_dump(mode="json"))
                 new_evidence.append(
                     EvidenceItem(
                         source=f"financials:{fin_item.ticker}:{fin_item.statement_type.value} "
                         f"({fin_resp.source or 'provider unspecified'})",
-                        summary=format_financials(fin_resp.data),
+                        summary=format_financials(fin_resp),
                     )
                 )
         except Exception:

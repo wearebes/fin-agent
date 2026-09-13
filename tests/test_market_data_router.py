@@ -219,31 +219,27 @@ class TestGetMarketDataRouting:
 class TestGetFinancialsFusion:
     @patch("fin_agent.adapters.market_data.router.YFinanceClient")
     @patch("fin_agent.adapters.market_data.router.AKShareClient")
-    def test_suffixed_a_share_uses_both_sources_with_normalized_codes(self, MockAK, MockYF):
-        MockYF.return_value.get_financials.return_value = _financial_resp(
-            "002214.SZ", 1.0, None
-        )
-        MockAK.return_value.get_financials.return_value = _financial_resp(
-            "002214", None, 2.0
-        )
+    def test_suffixed_a_share_uses_whole_primary_statement(self, MockAK, MockYF):
+        MockYF.return_value.get_financials.return_value = _financial_resp("002214.SZ", 1.0, None)
+        MockAK.return_value.get_financials.return_value = _financial_resp("002214", None, 2.0)
 
         result = MarketDataRouter().get_financials(
             "002214.SZ", FinancialStatementType.INCOME_STATEMENT
         )
 
-        MockYF.return_value.get_financials.assert_called_once_with(
-            "002214.SZ", FinancialStatementType.INCOME_STATEMENT,
-            frequency=DataFrequency.YEARLY,
-        )
+        MockYF.return_value.get_financials.assert_not_called()
         MockAK.return_value.get_financials.assert_called_once_with(
-            "002214", FinancialStatementType.INCOME_STATEMENT,
+            "002214",
+            FinancialStatementType.INCOME_STATEMENT,
             frequency=DataFrequency.YEARLY,
         )
         assert result.data[0].net_income == 2.0
+        assert result.data[0].total_revenue is None
+        assert result.data[0].ticker == "002214.SZ"
 
     @patch("fin_agent.adapters.market_data.router.YFinanceClient")
     @patch("fin_agent.adapters.market_data.router.AKShareClient")
-    def test_merges_records_from_both_sources(self, MockAK, MockYF):
+    def test_keeps_missing_fields_instead_of_splicing_providers(self, MockAK, MockYF):
         ak_instance = MagicMock()
         yf_instance = MagicMock()
         MockAK.return_value = ak_instance
@@ -256,12 +252,12 @@ class TestGetFinancialsFusion:
         resp = router.get_financials("600519", FinancialStatementType.INCOME_STATEMENT)
 
         assert len(resp.data) == 1
-        assert resp.data[0].total_revenue == 500000.0
+        assert resp.data[0].total_revenue is None
         assert resp.data[0].net_income == 100000.0
 
     @patch("fin_agent.adapters.market_data.router.YFinanceClient")
     @patch("fin_agent.adapters.market_data.router.AKShareClient")
-    def test_deduplicates_by_year(self, MockAK, MockYF):
+    def test_prefers_primary_statement_even_when_secondary_disagrees(self, MockAK, MockYF):
         ak_instance = MagicMock()
         yf_instance = MagicMock()
         MockAK.return_value = ak_instance
@@ -274,7 +270,7 @@ class TestGetFinancialsFusion:
         resp = router.get_financials("600519", FinancialStatementType.INCOME_STATEMENT)
 
         assert len(resp.data) == 1
-        assert resp.data[0].total_revenue == 500000.0
+        assert resp.data[0].total_revenue == 480000.0
         assert resp.data[0].net_income == 100000.0
 
     @patch("fin_agent.adapters.market_data.router.YFinanceClient")
@@ -374,7 +370,7 @@ class TestFMPFusion:
     @patch("fin_agent.adapters.market_data.router.FMPClient")
     @patch("fin_agent.adapters.market_data.router.YFinanceClient")
     @patch("fin_agent.adapters.market_data.router.AKShareClient")
-    def test_financials_merges_fmp_when_key_present(self, MockAK, MockYF, MockFMP):
+    def test_fmp_is_fallback_not_field_fusion(self, MockAK, MockYF, MockFMP):
         ak_instance = MagicMock()
         yf_instance = MagicMock()
         fmp_instance = MagicMock()
@@ -390,11 +386,15 @@ class TestFMPFusion:
         resp = router.get_financials("AAPL", FinancialStatementType.INCOME_STATEMENT)
 
         ak_instance.get_financials.assert_not_called()
-        fmp_instance.get_financials.assert_called_once()
-        # Reads resp_c.data (not the non-existent .records) and merges by year.
+        fmp_instance.get_financials.assert_not_called()
         assert len(resp.data) == 1
         assert resp.data[0].total_revenue == 500000.0
-        assert resp.data[0].net_income == 100000.0
+        assert resp.data[0].net_income is None
+        yf_instance.get_financials.return_value.data = []
+        fallback = router.get_financials("AAPL", FinancialStatementType.INCOME_STATEMENT)
+        assert fallback.data[0].total_revenue is None
+        assert fallback.data[0].net_income == 100000.0
+        assert fallback.source == "Financial Modeling Prep"
 
 
 class TestGetCryptoDataRouting:

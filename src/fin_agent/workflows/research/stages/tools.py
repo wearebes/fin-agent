@@ -99,7 +99,7 @@ class FinancialsTool:
                 stmt_type,
                 frequency=DataFrequency(kwargs.get("frequency", "yearly")),
             )
-            return format_financials(resp.data)
+            return format_financials(resp) if resp.data else "[]"
         except Exception:
             logger.exception("financials tool failed for ticker=%s", ticker)
             return "[]"

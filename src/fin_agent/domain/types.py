@@ -165,6 +165,10 @@ class FinancialStatementRecord(BaseModel):
         ..., description="Which financial statement."
     )
     fiscal_year: int = Field(..., description="Fiscal year.")
+    period_end: date | None = None
+    published_at: date | None = Field(
+        default=None, description="Actual disclosure date when known; never inferred from year end."
+    )
     fiscal_quarter: int | None = Field(
         default=None, description="Fiscal quarter (1-4), None=annual."
     )

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fin_agent.domain.types import EvidenceItem, FinancialStatementRecord
+from fin_agent.domain.types import EvidenceItem, FinancialStatementResponse
 
 
 def compact_records(records: list[dict[str, Any]], limit: int = 12000) -> str:
@@ -43,8 +43,8 @@ def render_evidence(evidence: list[EvidenceItem], limit: int = 60000) -> str:
     return compact_records(records, limit=limit)
 
 
-def format_financials(records: list[FinancialStatementRecord]) -> str:
+def format_financials(response: FinancialStatementResponse) -> str:
     latest = sorted(
-        records, key=lambda row: (row.fiscal_year, row.fiscal_quarter or 0), reverse=True
+        response.data, key=lambda row: (row.fiscal_year, row.fiscal_quarter or 0), reverse=True
     )[:8]
-    return compact_records([row.model_dump(mode="json", exclude_none=True) for row in latest])
+    return response.model_copy(update={"data": latest}).model_dump_json(exclude_none=True)

@@ -11,6 +11,7 @@ from statistics import stdev
 
 from fin_agent.domain.reports import ReportChart, ReportData, ReportMetric, ReportSeries
 from fin_agent.domain.types import FinancialStatementResponse, MarketDataResponse
+from fin_agent.services.financial_analysis import append_financial_analysis
 
 
 def build_report_data(ctx) -> ReportData:
@@ -202,4 +203,12 @@ def build_report_data(ctx) -> ReportData:
     ]:
         if missing:
             output.gaps.append(text(cn, en))
+    append_financial_analysis(
+        [
+            FinancialStatementResponse.model_validate(raw)
+            for raw in ctx.metadata.get("report_financials", [])
+        ],
+        output,
+        ctx.request.lang,
+    )
     return output

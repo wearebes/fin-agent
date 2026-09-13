@@ -54,7 +54,7 @@ async def test_financial_values_reach_writer_and_reviewer(config):
     ctx.plan.financials = [FinancialsPlanItem(ticker="AAPL")]
     deps = _make_deps(config)
     ctx = await retrieve(ctx, deps)
-    records = json.loads(ctx.evidence[0].summary)
+    records = json.loads(ctx.evidence[0].summary)["data"]
     assert records[0]["total_revenue"] == 394328000000.0
     assert records[0]["net_income"] == 99803000000.0
     captured = []
@@ -92,7 +92,7 @@ async def test_retrieval_and_financial_tool_keep_same_latest_periods(config):
     tool = build_default_tool_registry(deps.search, deps.market_data).get("financials")
     result = await tool(ticker="AAPL")
     assert result == ctx.evidence[0].summary
-    actual = json.loads(result)
+    actual = json.loads(result)["data"]
     assert [(r["fiscal_year"], r.get("fiscal_quarter")) for r in actual] == [
         (2025, 2), (2025, 1), (2025, None), (2024, 2),
         (2024, 1), (2024, None), (2023, 2), (2023, 1),

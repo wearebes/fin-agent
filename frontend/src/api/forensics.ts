@@ -28,9 +28,11 @@ export interface PerformanceMetrics {
   total_return_pct: number
   annualized_return_pct: number
   annualized_volatility_pct: number
-  sharpe_ratio: number
+  sharpe_ratio: number | null
+  sortino_ratio?: number | null
+  calmar_ratio?: number | null
   max_drawdown_pct: number
-  win_rate_pct: number
+  win_rate_pct: number | null
   trade_count: number
   beta: number | null
   alpha_pct: number | null
@@ -40,7 +42,7 @@ export interface AuditCheck {
   key: string
   title: string
   status: AuditStatus
-  score: number
+  score: number | null
   finding: string
   evidence: string
 }
@@ -56,7 +58,7 @@ export interface ForensicsReport {
   data_start: string
   data_end: string
   observation_count: number
-  reliability_score: number
+  reliability_score: number | null
   verdict: string
   metrics: PerformanceMetrics
   benchmark_return_pct: number | null
@@ -67,6 +69,16 @@ export interface ForensicsReport {
   equity_curve: Array<{ date: string; strategy: number; benchmark: number | null }>
   narrative: { summary: string; primary_cause: string; repair_action: string; generated_by_ai: boolean }
   disclaimer: string
+  methodology?: string[]
+  validation?: {
+    total_return_pct: number | null
+    note: string
+    folds: Array<{
+      train_end: string; test_start: string; test_end: string
+      fast_window: number; slow_window: number
+      total_return_pct: number; max_drawdown_pct: number; trade_count: number
+    }>
+  } | null
 }
 
 export async function runForensics(input: ForensicsInput): Promise<ForensicsReport> {

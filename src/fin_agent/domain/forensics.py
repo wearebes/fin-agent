@@ -104,9 +104,11 @@ class PerformanceMetrics(BaseModel):
     total_return_pct: float
     annualized_return_pct: float
     annualized_volatility_pct: float
-    sharpe_ratio: float
+    sharpe_ratio: float | None
+    sortino_ratio: float | None = None
+    calmar_ratio: float | None = None
     max_drawdown_pct: float
-    win_rate_pct: float
+    win_rate_pct: float | None
     trade_count: int
     beta: float | None = None
     alpha_pct: float | None = None
@@ -116,7 +118,7 @@ class AuditCheck(BaseModel):
     key: str
     title: str
     status: AuditStatus
-    score: int = Field(ge=0, le=100)
+    score: int | None = Field(default=None, ge=0, le=100, deprecated=True)
     finding: str
     evidence: str
 
@@ -146,6 +148,23 @@ class ForensicsNarrative(BaseModel):
     generated_by_ai: bool = False
 
 
+class ValidationFold(BaseModel):
+    train_end: date
+    test_start: date
+    test_end: date
+    fast_window: int
+    slow_window: int
+    total_return_pct: float
+    max_drawdown_pct: float
+    trade_count: int
+
+
+class WalkForwardResult(BaseModel):
+    folds: list[ValidationFold] = Field(default_factory=list)
+    total_return_pct: float | None = None
+    note: str
+
+
 class ForensicsReport(BaseModel):
     run_id: str
     created_at: str
@@ -157,7 +176,7 @@ class ForensicsReport(BaseModel):
     data_start: date
     data_end: date
     observation_count: int
-    reliability_score: int = Field(ge=0, le=100)
+    reliability_score: int | None = Field(default=None, ge=0, le=100, deprecated=True)
     verdict: str
     metrics: PerformanceMetrics
     benchmark_return_pct: float | None = None
@@ -168,3 +187,5 @@ class ForensicsReport(BaseModel):
     equity_curve: list[EquityPoint]
     narrative: ForensicsNarrative
     disclaimer: str
+    validation: WalkForwardResult | None = None
+    methodology: list[str] = Field(default_factory=list)

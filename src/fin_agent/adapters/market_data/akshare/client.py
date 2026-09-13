@@ -223,6 +223,7 @@ class AKShareClient:
             records: list[FinancialStatementRecord] = []
             for _, row in df.iterrows():
                 end_date = pd.to_datetime(row["end_date"])
+                published = pd.to_datetime(row.get("NOTICE_DATE"), errors="coerce")
                 fiscal_year = end_date.year
                 fiscal_quarter = (
                     (end_date.month - 1) // 3 + 1 if frequency == DataFrequency.QUARTERLY else None
@@ -232,6 +233,8 @@ class AKShareClient:
                         ticker=ticker,
                         statement_type=statement_type,
                         fiscal_year=fiscal_year,
+                        period_end=end_date.date(),
+                        published_at=published.date() if pd.notna(published) else None,
                         fiscal_quarter=fiscal_quarter,
                         total_revenue=_nan_safe(row.get("total_revenue")),
                         net_income=_nan_safe(row.get("net_income")),

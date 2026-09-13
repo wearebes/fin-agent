@@ -47,9 +47,9 @@ _BALANCE_METRICS: dict[str, list[str]] = {
         "TotalLiabilities",
     ],
     "total_equity": [
-        "Stockholders Equity",
         "Total Equity Gross Minority Interest",
         "TotalEquityGrossMinorityInterest",
+        "Stockholders Equity",
     ],
 }
 
@@ -137,8 +137,12 @@ class YFinanceClient:
                     )
                 )
             return MarketDataResponse(
-                ticker=ticker, asset_type=asset_type, frequency=frequency, data=points,
-                source="Yahoo Finance (yfinance)", price_basis="yfinance history auto-adjusted",
+                ticker=ticker,
+                asset_type=asset_type,
+                frequency=frequency,
+                data=points,
+                source="Yahoo Finance (yfinance)",
+                price_basis="yfinance history auto-adjusted",
             )
         except Exception:
             logger.warning(
@@ -212,7 +216,8 @@ class YFinanceClient:
                 asset_type=asset_type,
                 frequency=frequency,
                 data=points,
-                source="Yahoo Finance chart API", currency=result.get("meta", {}).get("currency"),
+                source="Yahoo Finance chart API",
+                currency=result.get("meta", {}).get("currency"),
                 price_basis="Yahoo chart quote.close (not a total-return series)",
             )
         except Exception:
@@ -250,6 +255,7 @@ class YFinanceClient:
                         ticker=ticker,
                         statement_type=statement_type,
                         fiscal_year=fiscal_year,
+                        period_end=col_date.date(),
                         fiscal_quarter=fiscal_quarter,
                         total_revenue=cur.get("total_revenue"),
                         net_income=cur.get("net_income"),
@@ -264,8 +270,16 @@ class YFinanceClient:
                 )
                 prev = cur
             records.reverse()
+            try:
+                currency = t.get_info().get("financialCurrency")
+            except Exception:
+                currency = None
             return FinancialStatementResponse(
-                ticker=ticker, statement_type=statement_type, data=records
+                ticker=ticker,
+                statement_type=statement_type,
+                data=records,
+                source="Yahoo Finance financial statements (reported units)",
+                currency=currency if isinstance(currency, str) else None,
             )
         except Exception:
             logger.exception("get_financials failed for ticker=%s", ticker)

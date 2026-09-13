@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import {
   Activity,
@@ -34,11 +34,11 @@ const copy = {
     ticker: '标的代码', benchmark: '基准（可选）', period: '历史区间', cost: '单边交易成本',
     windows: '参数窗口', fast: '快速', slow: '慢速', run: '开始回测分析',
     running: '正在获取行情并审计…', presets: '策略模板', introTitle: '检查范围',
-    evidenceNames: ['未来数据泄漏', '过拟合', '参数敏感性', '交易成本', '市场状态', 'Alpha 真实性'],
-    reliability: '策略可信度', annualized: '年化收益', drawdown: '最大回撤', chartReturn: '收益率',
+    evidenceNames: ['信号时序', '滚动留出', '参数敏感度', '成本压力', '事后市场分组', '单基准归因'],
+    reliability: '历史评估', annualized: '年化收益', drawdown: '最大回撤', chartReturn: '收益率',
     sharpe: '夏普比率', alpha: '年化 Alpha', curve: '净值证据', strategy: '组合',
     base: '基准', checks: '策略检查', sensitivity: '参数敏感度', costs: '成本压力测试',
-    regimes: '市场状态归因', aiNote: 'AI 分析摘要', ruleNote: '规则摘要',
+    regimes: '事后市场分组', aiNote: 'AI 分析摘要', ruleNote: '规则摘要',
     primary: '主要风险来源', repair: '最小修复建议', observations: '个交易日', trades: '次换仓',
     source: '历史收盘价', error: '分析未完成', retry: '检查代码或更换标的后重试。',
     customName: '规则名称', customSignal: '信号指标', entry: '入场阈值', exit: '离场阈值',
@@ -79,13 +79,13 @@ const copy = {
     ticker: 'Ticker', benchmark: 'Benchmark (optional)', period: 'History', cost: 'One-way cost',
     windows: 'Parameter windows', fast: 'Fast', slow: 'Slow', run: 'Run backtest analysis',
     running: 'Fetching prices and auditing…', presets: 'Templates', introTitle: 'Audit coverage',
-    evidenceNames: ['Leakage', 'Overfitting', 'Sensitivity', 'Costs', 'Regimes', 'Alpha'],
-    reliability: 'Reliability', annualized: 'Annual return', drawdown: 'Max drawdown', chartReturn: 'Return',
+    evidenceNames: ['Signal timing', 'Rolling holdout', 'Sensitivity', 'Cost stress', 'Retrospective regimes', 'Single-benchmark attribution'],
+    reliability: 'Historical evaluation', annualized: 'Annual return', drawdown: 'Max drawdown', chartReturn: 'Return',
     sharpe: 'Sharpe ratio', alpha: 'Annual alpha', curve: 'Equity evidence', strategy: 'Portfolio',
     base: 'Benchmark', checks: 'Strategy checks', sensitivity: 'Parameter sensitivity',
-    costs: 'Cost stress', regimes: 'Regime attribution', aiNote: 'AI analysis brief',
+    costs: 'Cost stress', regimes: 'Retrospective regimes', aiNote: 'AI analysis brief',
     ruleNote: 'Rules summary', primary: 'Primary risk', repair: 'Minimum repair',
-    observations: 'sessions', trades: 'trades', source: 'Historical closes',
+    observations: 'sessions', trades: 'turnover events', source: 'Historical closes',
     error: 'Analysis did not complete', retry: 'Check the symbol or try another instrument.',
     customName: 'Rule name', customSignal: 'Signal indicator', entry: 'Entry threshold', exit: 'Exit threshold',
     customHint: {
@@ -338,18 +338,19 @@ function Intro({ labels }: { labels: Labels }) {
 }
 
 function ScoreCard({ report, labels }: { report: ForensicsReport; labels: Labels }) {
-  const scoreStyle = { '--qf-score': `${report.reliability_score * 3.6}deg` } as CSSProperties
-  return <div className="qf-panel qf-score-card"><div className="qf-score-ring" style={scoreStyle}><div><strong>{report.reliability_score}</strong><span>/100</span></div></div><div className="qf-score-copy"><span>{labels.reliability}</span><h2>{report.verdict}</h2><p>{report.narrative.summary}</p><div className="qf-score-meta"><span><BarChart3 size={14} />{report.observation_count} {labels.observations}</span><span><Activity size={14} />{report.metrics.trade_count} {labels.trades}</span></div></div></div>
+  return <div className="qf-panel qf-score-card"><div className="qf-score-copy"><span>{labels.reliability}</span><h2>{report.verdict}</h2><p>{report.narrative.summary}</p><div className="qf-score-meta"><span><BarChart3 size={14} />{report.observation_count} {labels.observations}</span><span><Activity size={14} />{report.metrics.trade_count} {labels.trades}</span></div></div></div>
 }
 
 function Report({ report, lang, labels, view }: { report: ForensicsReport; lang: 'zh' | 'en'; labels: Labels; view: Exclude<WorkbenchTab, 'setup'> }) {
   const metrics = [
     [labels.annualized, formatPct(report.metrics.annualized_return_pct)],
     [labels.drawdown, formatPct(report.metrics.max_drawdown_pct)],
-    [labels.sharpe, report.metrics.sharpe_ratio.toFixed(2)],
+    [labels.sharpe, report.metrics.sharpe_ratio?.toFixed(2) ?? '—'],
+    ['Sortino', report.metrics.sortino_ratio?.toFixed(2) ?? '—'],
+    ['Calmar', report.metrics.calmar_ratio?.toFixed(2) ?? '—'],
+    [lang === 'zh' ? '盈利日占比（非逐笔胜率）' : 'Positive-day rate (not trade wins)', report.metrics.win_rate_pct === null ? '—' : formatPct(report.metrics.win_rate_pct)],
     ...(report.metrics.alpha_pct === null ? [] : [[labels.alpha, formatPct(report.metrics.alpha_pct)] as const]),
   ]
-  const weakest = [...report.checks].sort((a, b) => a.score - b.score)[0]
   return <section className="qf-report">
     {view === 'backtest' && <>
       <div className="qf-report-head"><div><span>BACKTEST / {report.run_id}</span><h2>{report.ticker} · {report.strategy_label}</h2></div><div>{report.data_start} → {report.data_end}<br />{labels.source}</div></div>
@@ -357,15 +358,25 @@ function Report({ report, lang, labels, view }: { report: ForensicsReport; lang:
       <article className="qf-card qf-equity"><div className="qf-card-title"><div><span>HISTORICAL COMPARISON</span><h3>{labels.curve}</h3></div><div className="qf-legend"><span><i className="strategy" />{labels.strategy}</span>{report.benchmark && <span><i />{labels.base}</span>}</div></div><EquityChart report={report} labels={labels} /></article>
     </>}
     {view === 'forensics' && <>
+      {report.validation && <article className="qf-card">
+        <h3>{lang === 'zh' ? '滚动留出验证' : 'Walk-forward holdout'}</h3>
+        <p>{report.validation.note}</p>
+        <div className="qf-cost-list">{report.validation.folds.map((fold) => <div key={fold.test_start}>
+          <span>{fold.test_start} → {fold.test_end}<small> · {fold.fast_window}/{fold.slow_window}</small><br /><small>{lang === 'zh' ? '训练截至' : 'Trained through'} {fold.train_end} · {lang === 'zh' ? '最大回撤' : 'Max drawdown'} {formatPct(fold.max_drawdown_pct)}</small></span>
+          <strong>{formatPct(fold.total_return_pct)}</strong>
+        </div>)}</div>
+        {report.validation.total_return_pct !== null && <p>{lang === 'zh' ? '留出区间累计净收益' : 'Combined holdout net return'}: {formatPct(report.validation.total_return_pct)}</p>}
+      </article>}
       <article className="qf-card qf-narrative"><div className="qf-ai-tag"><Sparkles size={14} />{report.narrative.generated_by_ai ? labels.aiNote : labels.ruleNote}</div><blockquote>{report.narrative.summary}</blockquote><div><span>{labels.primary}</span><p>{report.narrative.primary_cause}</p></div><div><span>{labels.repair}</span><p>{report.narrative.repair_action}</p></div></article>
       <div className="qf-section-title"><div><span>DIAGNOSIS</span><h2>{labels.checks}</h2></div><Gauge size={24} /></div>
-      <div className="qf-check-grid">{report.checks.map((check) => <article key={check.key} className={`qf-check ${check.status} ${check.key === weakest.key ? 'weakest' : ''}`}><header><div className="qf-check-icon"><StatusIcon check={check} /></div><div><h3>{check.title}</h3><span>{check.status.toUpperCase()}</span></div><strong>{check.score}</strong></header><p>{check.finding}</p><footer>{check.evidence}</footer></article>)}</div>
+      <div className="qf-check-grid">{report.checks.map((check) => <article key={check.key} className={`qf-check ${check.status}`}><header><div className="qf-check-icon"><StatusIcon check={check} /></div><div><h3>{check.title}</h3><span>{check.status.toUpperCase()}</span></div></header><p>{check.finding}</p><footer>{check.evidence}</footer></article>)}</div>
       <div className="qf-analysis-grid">
         <article className="qf-card"><div className="qf-card-title"><div><span>ROBUSTNESS</span><h3>{labels.sensitivity}</h3></div></div><div className="qf-bar-list">{report.sensitivity.map((point) => { const width = Math.min(100, Math.max(4, 50 + point.total_return_pct)); return <div key={point.label}><span>{point.label}<small>{point.fast_window}/{point.slow_window}</small></span><div><i style={{ width: `${width}%` }} /></div><strong>{formatPct(point.total_return_pct)}</strong></div>})}</div></article>
         <article className="qf-card"><div className="qf-card-title"><div><span>EXECUTION</span><h3>{labels.costs}</h3></div></div><div className="qf-cost-list">{report.cost_scenarios.map((item) => <div key={item.cost_bps}><span>{item.cost_bps} bps</span><i /><strong>{formatPct(item.total_return_pct)}</strong></div>)}</div></article>
         <article className="qf-card"><div className="qf-card-title"><div><span>REGIMES</span><h3>{labels.regimes}</h3></div></div><div className="qf-regimes">{report.regimes.map((item) => <div key={item.regime}><span>{regimeLabels[item.regime]?.[lang] || item.regime}</span><strong>{formatPct(item.annualized_return_pct)}</strong><small>{item.trading_days} {labels.observations}</small></div>)}</div></article>
       </div>
     </>}
+    {report.methodology && <details className="qf-card"><summary>{lang === 'zh' ? '计算口径与适用边界' : 'Methodology and limitations'}</summary>{report.methodology.map((note) => <p key={note}>{note}</p>)}</details>}
     <div className="qf-disclaimer"><ShieldCheck size={16} />{report.disclaimer}</div>
   </section>
 }

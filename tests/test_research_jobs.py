@@ -276,7 +276,8 @@ def test_figures_compute_returns_drawdown_and_align_comparison_without_filling_g
     financials = next(c for c in data.charts if c.kind == "bar")
     assert financials.unit == "USD"
     assert financials.series[1].values == [-50, None, 10]
-    assert len(data.charts) == 4
+    margin = next(c for c in data.charts if "净利率" in c.title)
+    assert margin.series[0].values == [-5, None, 10 / 1400 * 100]
 
 
 def test_report_ignores_fabricated_prose_and_sparse_prices():
