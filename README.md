@@ -1,21 +1,92 @@
 # FinAgent
 
-FinAgent 是一个本地运行的金融研究与量化策略分析工具。用户可以接入自己的模型 API，提交后台研究任务，生成带行情、财务、新闻和来源的网页研报；量化模块使用真实历史收盘价评估常见策略，并检查数据泄漏、参数敏感度、交易成本和市场状态依赖。
+> 一个在本地运行、重视数据来源和计算过程的金融研究工具
 
-## 功能
+FinAgent 把模型、行情、财务报表、新闻检索和策略回测放在同一个界面里。用户提出一个金融问题后，系统可以制定研究计划、查找数据、整理分析，并生成带图表和来源的报告。
 
-- 金融研究：`计划 → 取数 → 补充工具 → 撰写 → 复核 → 保存`
-- 后台任务：页面关闭后继续执行，支持进度、历史和失败重试
-- 图文研报：行情、回撤、年度三张财务报表、关键指标、新闻与来源
-- 用户自带 API：OpenAI、DeepSeek、通义千问、GLM、Kimi、豆包、Gemini、Claude 及受信任的兼容接口
-- 量化策略：均线、突破、均值回归、RSI、动量、布林带和自定义规则
-- 方法验证：下一交易日收盘成交、三折滚动留出、下行风险；财务比率附计算口径与来源
+做这个项目时，我们更关心结果能不能核对，而不只是回答看起来是否完整。图表只使用实际取得的数据，缺少的信息会直接说明；财务指标按固定公式计算，策略回测也会检查未来数据泄漏、交易成本、参数变化和样本外表现。
+
+## 能做什么
+
+### 金融研究
+
+- 研究流程：`制定计划 → 获取数据 → 补充检索 → 撰写报告 → 复核结论 → 保存结果`
+- 后台任务：页面关闭后继续执行，支持进度查看、历史报告和失败重试
+- 图文报告：展示行情、回撤、年度三张财务报表、关键指标、新闻线索、来源和数据缺口
+- 模型接入：支持 OpenAI、DeepSeek、通义千问、GLM、Kimi、豆包、Gemini、Claude 及受信任的兼容接口
+
+### 量化策略分析
+
+- 内置均线、突破、均值回归、RSI、动量、布林带和自定义规则
+- 使用真实历史收盘价，信号只读取前一交易日及更早的数据，并在下一交易日收盘成交
+- 检查交易成本、三折滚动样本外表现、参数敏感度、下行风险和不同市场状态下的表现
+- 输出收益、波动率、最大回撤、夏普比率、Sortino 比率和 Calmar 比率等指标
+
+### 数据与本地使用
+
 - 数据源：Yahoo Finance、AKShare、东方财富、新浪财经，可选 FMP、Tavily 和 Exa
-- 本地账户与 SQLite：研究任务和报告按账户保存；API Key 不落盘
+- 本地账户与 SQLite：研究任务和报告按账户隔离保存
+- API Key 仅暂存在服务端内存，24 小时后或服务重启时失效，不写入数据库或浏览器存储
+- Windows 可通过桌面启动脚本运行，也支持前后端开发模式
 
-完整的研报口径与运行边界见 [后台研究与图文研报](docs/research-reports.md)。
+## 如何保证结果可信
 
-## 目录
+- 报告图表使用取数阶段保存的真实数据，不从模型生成的文字中猜数字
+- 财务比率保留来源和计算方法，不混用来源、币种或报告期不一致的报表字段
+- 缺少预测现金流、折现率、终值增长率等关键依据时，不生成 DCF 目标价
+- 遇到异常价格、日期缺口、数据冲突或外部服务失败时，系统会明确报错，不会自行补数或删数
+- 模型调用失败时，已经取得的数据和量化结果仍会保留，也不会自动更换模型或重复产生费用
+
+更完整的方法说明、数据口径和已知边界见 [后台研究与图文研报](docs/research-reports.md)。
+
+## 技术栈
+
+- 后端：Python 3.12、FastAPI、Pydantic、SQLAlchemy、SQLite、Alembic
+- 前端：React、TypeScript、Vite、TanStack Query、Zustand
+- 数据与模型：pandas、yfinance、AKShare、OpenAI 兼容接口
+- 测试与质量：pytest、Node.js Test Runner、Ruff、mypy
+
+## 快速开始
+
+环境要求：Python 3.12+、Node.js 20+。
+
+```powershell
+conda env create -f environment.yml
+conda activate fin-agent
+python -m pip install -e ".[dev]"
+
+cd frontend
+npm install
+npm run build
+cd ..
+
+Copy-Item .env.example .env
+```
+
+安装完成后，Windows 用户可以双击 `start_silent.vbs`；开发模式可运行：
+
+```powershell
+fin-agent api --reload
+```
+
+- 应用：`http://127.0.0.1:8000/`
+- 健康检查：`http://127.0.0.1:8000/healthz`
+- API 文档：`http://127.0.0.1:8000/docs`
+
+如需单独启动前端开发服务器：
+
+```powershell
+cd frontend
+npm run dev
+```
+
+## 模型连接
+
+登录后进入“模型连接设置”，填写供应商、Base URL、Model ID 和 API Key。网页会员、Coding Plan 与 API 额度通常相互独立，实际模型名称和可用额度以供应商控制台为准。
+
+常用服务地址已在设置页预置；自定义地址必须使用 HTTPS，并由管理员加入 `FIN_AGENT__RUNTIME__LLM_ALLOWED_HOSTS`。未配置搜索 Key 时，行情和可用的 A 股公开新闻仍可运行。
+
+## 项目结构
 
 ```text
 src/fin_agent/
@@ -29,77 +100,29 @@ src/fin_agent/
   workflows/     金融研究流程
 frontend/        React/Vite 前端
 tests/           后端测试
-docs/            当前使用与能力说明
+docs/            使用说明与方法边界
 configs/         分环境配置
 alembic/         数据库迁移
 ```
 
 `output/`、`tmp/`、`var/` 和前端构建产物均为本地文件，不进入 Git。
 
-## 安装
-
-要求 Python 3.12+ 和 Node.js 20+。
-
-```bash
-conda env create -f environment.yml
-conda activate fin-agent
-python -m pip install -e ".[dev]"
-cd frontend
-npm install
-npm run build
-cd ..
-```
-
-复制环境变量示例：
-
-```bash
-cp .env.example .env
-```
-
-默认搜索供应商是 Tavily。若使用 Exa，需要同时设置供应商名称和对应 Key；不配置搜索 Key 时，行情和可用的 A 股公开新闻仍可运行。
-
-## 启动
-
-Windows 本地桌面使用：
-
-```text
-双击 start_silent.vbs
-```
-
-开发模式：
-
-```bash
-fin-agent api --reload
-```
-
-访问：
-
-- 应用：`http://127.0.0.1:8000/`
-- 健康检查：`http://127.0.0.1:8000/healthz`
-- API 文档：`http://127.0.0.1:8000/docs`
-
-也可以单独启动前端开发服务器：
-
-```bash
-cd frontend
-npm run dev
-```
-
-## 用户自己的模型 API
-
-登录后进入“模型连接设置”，选择供应商，填写 Base URL、Model ID 和 API Key。保存仅把密钥暂存在服务端内存，24 小时后或服务重启时失效。网页会员、Coding Plan 和 API 额度通常相互独立；模型名称和可用额度以供应商控制台为准。
-
-本地服务允许的常用地址已在设置页预置。自定义地址必须使用 HTTPS，并由管理员加入 `FIN_AGENT__RUNTIME__LLM_ALLOWED_HOSTS`。
-
 ## 验证
 
-```bash
+```powershell
 pytest
 ruff check .
+
 cd frontend
 npm run typecheck
 npm run build
 npm test
 ```
 
-量化结果基于历史数据与简化成交假设，研报依赖公开数据和所选模型，均不构成投资建议。
+## 使用范围
+
+FinAgent 目前适合在个人电脑上运行，还不是面向大量用户的在线服务。研究报告依赖公开数据和用户选择的模型；量化结果基于历史数据和简化的成交假设，不代表未来表现，也不构成投资建议。
+
+## License
+
+[MIT](LICENSE)
