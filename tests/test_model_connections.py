@@ -56,6 +56,21 @@ def test_real_app_factory_supports_model_settings_without_provider_calls(tmp_pat
         assert app_client.delete(PATH, headers=headers).status_code == 204
 
 
+def test_personal_only_app_skips_legacy_setup_and_never_writes_system_key(tmp_path, monkeypatch):
+    from fin_agent.interfaces.api import local_router
+
+    env_path = tmp_path / ".env"
+    monkeypatch.setattr(local_router, "_ENV_PATH", env_path)
+    settings = AppSettings(
+        runtime={"allow_system_model": False},
+        database={"backend": "sql", "url": f"sqlite:///{tmp_path / 'portable.db'}"},
+    )
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/v1/local/setup/status").json()["configured"] is True
+        assert client.post("/v1/local/setup", json={"api_key": SECRET}).status_code == 403
+        assert not env_path.exists()
+
+
 @pytest.fixture
 def client():
     def user(token):

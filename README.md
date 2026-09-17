@@ -8,9 +8,20 @@ FinAgent 把 AI 分析、行情、财务报表、新闻检索和策略回测放�
 
 ## 下载与使用（Windows）
 
-可以从 GitHub 下载使用，但目前还不是免安装软件。第一次使用需要安装 Python 和 Node.js，并运行一次安装命令；以后只需双击启动文件。
+普通用户可以直接[下载 Windows 免安装版](https://github.com/wearebes/fin-agent/releases/latest/download/FinAgent-Windows-x64.zip)，适用于 Windows 10/11 的 64 位电脑，不需要安装 Python 或 Node.js。
 
-### 第一次使用
+1. 下载后先解压整个压缩包，不能在压缩包里直接运行。
+2. 双击文件夹中的 `Start FinAgent.cmd`，稍等片刻，浏览器会自动打开。
+3. 第一次使用时注册一个本地账户。需要 AI 研究时，到“模型连接设置”填写自己的模型 API Key。
+4. 用完后双击 `Stop FinAgent.cmd` 关闭服务。只关闭浏览器页面，后台仍会继续运行；关闭服务会中断未完成的任务。
+
+行情和 AI 研究需要联网，模型 API 可能产生费用。账户和报告保存在解压目录下的 `var` 文件夹，API Key 在重启后需要重新填写。升级前先关闭旧版，再把整个 `var` 文件夹复制到解压后的新版目录中。
+
+如果遇到问题，可以查看文件夹中的 `使用说明.txt` 和 `var/portable.log`，或到 [Issues](https://github.com/wearebes/fin-agent/issues) 反馈。提供日志时请先去掉个人信息。所有版本和文件校验值见 [Releases](https://github.com/wearebes/fin-agent/releases)。
+
+### 从源码安装（开发者）
+
+GitHub 的 `Code → Download ZIP` 下载的是源码。想直接使用软件，请下载上面的免安装版；需要修改代码时，再按以下步骤安装。
 
 1. 在 GitHub 页面点击绿色的 `Code` 按钮，再点击 `Download ZIP`；也可以直接[下载最新版 ZIP](https://github.com/wearebes/fin-agent/archive/refs/heads/main.zip)。
 2. 解压文件，并安装 Python 3.12 或更高版本、Node.js 20 或更高版本。
@@ -30,7 +41,7 @@ Copy-Item .env.example .env
 
 4. 双击 `start_silent.vbs`，等待几秒后在浏览器打开 `http://127.0.0.1:8000/`。
 
-以上安装只需完成一次。以后进入项目文件夹，双击 `start_silent.vbs` 即可启动。
+以上步骤针对源码版。以后进入项目文件夹，双击 `start_silent.vbs`，再打开上述本地地址即可使用。
 
 ## 能做什么
 
@@ -55,7 +66,7 @@ Copy-Item .env.example .env
 - API Key 仅暂存在服务端内存，24 小时后或服务重启时失效，不写入数据库或浏览器存储
 - Windows 可通过桌面启动脚本运行，也支持前后端开发模式
 
-## 如何保证结果可信
+## 数据和计算怎么处理
 
 - 报告图表使用取数阶段保存的真实数据，不从模型生成的文字中猜数字
 - 财务比率保留来源和计算方法，不混用来源、币种或报告期不一致的报表字段
@@ -74,7 +85,7 @@ Copy-Item .env.example .env
 
 ## 开发模式
 
-完成首次安装后，可以运行：
+完成源码安装后，可以运行：
 
 ```powershell
 .\.venv\Scripts\fin-agent.exe api --reload
@@ -132,6 +143,8 @@ npm run typecheck
 npm run build
 npm test
 ```
+
+免安装版的打包与验证步骤见 [Windows 发布说明](docs/windows-portable.md)。
 
 ## 使用范围
 

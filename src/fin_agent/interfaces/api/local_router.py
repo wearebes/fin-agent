@@ -102,13 +102,25 @@ def build_local_router() -> APIRouter:
     def setup_status(request: Request) -> LocalSetupStatus:
         container = request.app.state.container
         return LocalSetupStatus(
-            configured=_has_key(container.settings.openai),
+            configured=(
+                not container.settings.runtime.allow_system_model
+                or container.settings.runtime.commercial_mode
+                or _has_key(container.settings.openai)
+            ),
             auth_persistent=hasattr(container.user_store, "engine"),
         )
 
     @router.post("/setup", response_model=LocalSetupStatus)
     def save_setup(payload: LocalSetupRequest, request: Request) -> LocalSetupStatus:
         container = request.app.state.container
+        if (
+            not container.settings.runtime.allow_system_model
+            or container.settings.runtime.commercial_mode
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="请登录后在“模型连接设置”填写自己的 API Key。",
+            )
         current = container.settings.openai
         api_key = payload.api_key.strip() if payload.api_key else None
         if not api_key and not _has_key(current):
