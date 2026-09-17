@@ -2,9 +2,35 @@
 
 > 一个在本地运行、重视数据来源和计算过程的金融研究工具
 
-FinAgent 把模型、行情、财务报表、新闻检索和策略回测放在同一个界面里。用户提出一个金融问题后，系统可以制定研究计划、查找数据、整理分析，并生成带图表和来源的报告。
+FinAgent 把 AI 分析、行情、财务报表、新闻检索和策略回测放在同一个界面里。你可以直接提出一个金融问题，系统会查找数据、整理分析，并生成带图表和来源的报告。
 
-做这个项目时，我们更关心结果能不能核对，而不只是回答看起来是否完整。图表只使用实际取得的数据，缺少的信息会直接说明；财务指标按固定公式计算，策略回测也会检查未来数据泄漏、交易成本、参数变化和样本外表现。
+这个项目不只追求“能回答”，也重视答案能不能核对。图表只使用实际取得的数据，缺少的信息会直接说明；财务指标按固定公式计算，策略回测也会检查未来数据泄漏、交易成本、参数变化和样本外表现。
+
+## 下载与使用（Windows）
+
+可以从 GitHub 下载使用，但目前还不是免安装软件。第一次使用需要安装 Python 和 Node.js，并运行一次安装命令；以后只需双击启动文件。
+
+### 第一次使用
+
+1. 在 GitHub 页面点击绿色的 `Code` 按钮，再点击 `Download ZIP`；也可以直接[下载最新版 ZIP](https://github.com/wearebes/fin-agent/archive/refs/heads/main.zip)。
+2. 解压文件，并安装 Python 3.12 或更高版本、Node.js 20 或更高版本。
+3. 打开解压后的文件夹，在空白处右键选择“在终端中打开”，依次运行：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install .
+
+cd frontend
+npm install
+npm run build
+cd ..
+
+Copy-Item .env.example .env
+```
+
+4. 双击 `start_silent.vbs`，等待几秒后在浏览器打开 `http://127.0.0.1:8000/`。
+
+以上安装只需完成一次。以后进入项目文件夹，双击 `start_silent.vbs` 即可启动。
 
 ## 能做什么
 
@@ -46,34 +72,19 @@ FinAgent 把模型、行情、财务报表、新闻检索和策略回测放在�
 - 数据与模型：pandas、yfinance、AKShare、OpenAI 兼容接口
 - 测试与质量：pytest、Node.js Test Runner、Ruff、mypy
 
-## 快速开始
+## 开发模式
 
-环境要求：Python 3.12+、Node.js 20+。
-
-```powershell
-conda env create -f environment.yml
-conda activate fin-agent
-python -m pip install -e ".[dev]"
-
-cd frontend
-npm install
-npm run build
-cd ..
-
-Copy-Item .env.example .env
-```
-
-安装完成后，Windows 用户可以双击 `start_silent.vbs`；开发模式可运行：
+完成首次安装后，可以运行：
 
 ```powershell
-fin-agent api --reload
+.\.venv\Scripts\fin-agent.exe api --reload
 ```
 
 - 应用：`http://127.0.0.1:8000/`
 - 健康检查：`http://127.0.0.1:8000/healthz`
 - API 文档：`http://127.0.0.1:8000/docs`
 
-如需单独启动前端开发服务器：
+如需单独调试前端：
 
 ```powershell
 cd frontend
@@ -109,9 +120,12 @@ alembic/         数据库迁移
 
 ## 验证
 
+运行测试前先安装开发依赖：
+
 ```powershell
-pytest
-ruff check .
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m ruff check .
 
 cd frontend
 npm run typecheck
